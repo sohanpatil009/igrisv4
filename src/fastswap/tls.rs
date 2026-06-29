@@ -24,6 +24,9 @@ fn key_der_path() -> PathBuf {
 }
 
 pub fn get_or_create_tls_config() -> Result<TlsConfig> {
+    // Install ring-based crypto provider (required once per process)
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let (cert_der, key_der) = if cert_der_path().exists() && key_der_path().exists() {
         (fs::read(cert_der_path())?, fs::read(key_der_path())?)
     } else {
