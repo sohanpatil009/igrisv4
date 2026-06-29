@@ -3,9 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const HTTP_PORT: u16 = 53317;
-const TLS_PORT_START: u16 = 53318;
-const TLS_PORT_END: u16 = 53328;
+const TLS_PORT: u16 = 53318;
 
 pub struct DiscoveryService {
     devices: Arc<RwLock<Vec<Device>>>,
@@ -39,11 +37,7 @@ impl DiscoveryService {
             }
 
             let task = tokio::spawn(async move {
-                // Probe HTTP and HTTPS simultaneously, prefer TLS
-                let http_fut = Self::probe_device_http(&ip, HTTP_PORT);
-                let https_fut = Self::probe_device_https(&ip, TLS_PORT_START);
-                let (http_res, https_res) = tokio::join!(http_fut, https_fut);
-                https_res.or(http_res)
+                Self::probe_device_https(&ip, TLS_PORT).await
             });
 
             tasks.push(task);
@@ -70,38 +64,6 @@ impl DiscoveryService {
         Ok(discovered)
     }
 
-    async fn probe_device_http(ip: &str, port: u16) -> Option<Device> {
-        let url = format!("http://{}:{}/api/localsend/v2/info", ip, port);
-
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-            .ok()?;
-
-        match client.get(&url).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    match response.json::<Device>().await {
-                        Ok(mut device) => {
-                            device.ip = ip.to_string();
-                            device.port = port;
-                            tracing::info!("Found device: {} at {}:{} (HTTP)", device.alias, ip, port);
-                            return Some(device);
-                        }
-                        Err(e) => {
-                            tracing::debug!("Device at {} returned invalid JSON: {}", ip, e);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::debug!("No HTTP response from {}:{}: {}", ip, port, e);
-            }
-        }
-
-        None
-    }
-
     async fn probe_device_https(ip: &str, port: u16) -> Option<Device> {
         let url = format!("https://{}:{}/api/localsend/v2/info", ip, port);
 
@@ -122,13 +84,13 @@ impl DiscoveryService {
                             return Some(device);
                         }
                         Err(e) => {
-                            tracing::debug!("Device at {} returned invalid JSON: {}", ip, e);
+                            tracing::trace!("Device at {} returned invalid JSON: {}", ip, e);
                         }
                     }
                 }
             }
             Err(e) => {
-                tracing::debug!("No HTTPS response from {}:{}: {}", ip, port, e);
+                tracing::trace!("No HTTPS response from {}:{}: {}", ip, port, e);
             }
         }
 
