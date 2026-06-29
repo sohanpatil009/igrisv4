@@ -104,9 +104,12 @@ impl FastSwapManager {
             .await
             .map_err(|e| anyhow::anyhow!("HTTP server error: {}", e))?;
 
-        // Start TLS proxy
-        let tls_cfg = tls::get_or_create_tls_config()
+        tracing::info!("[FastSwap] Generating/loading TLS certificate...");
+        let tls_cfg = tokio::task::spawn_blocking(|| tls::get_or_create_tls_config())
+            .await
+            .map_err(|e| anyhow::anyhow!("TLS init task panicked: {}", e))?
             .map_err(|e| anyhow::anyhow!("TLS init error: {}", e))?;
+
         let tls_port = if http_port == 53317 { 53318 } else { http_port + 1 };
 
         let proxy_handle = tokio::spawn(async move {
