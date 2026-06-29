@@ -39,17 +39,11 @@ impl DiscoveryService {
             }
 
             let task = tokio::spawn(async move {
-                // Probe HTTP first, then HTTPS for TLS-enabled devices
-                let mut device = Self::probe_device_http(&ip, HTTP_PORT).await;
-                if device.is_none() {
-                    for tls_port in TLS_PORT_START..TLS_PORT_END {
-                        device = Self::probe_device_https(&ip, tls_port).await;
-                        if device.is_some() {
-                            break;
-                        }
-                    }
-                }
-                device
+                // Probe HTTP and HTTPS simultaneously, prefer TLS
+                let http_fut = Self::probe_device_http(&ip, HTTP_PORT);
+                let https_fut = Self::probe_device_https(&ip, TLS_PORT_START);
+                let (http_res, https_res) = tokio::join!(http_fut, https_fut);
+                https_res.or(http_res)
             });
 
             tasks.push(task);
