@@ -24,8 +24,9 @@ A fully offline, voice-activated AI assistant built with **Rust** and **Dioxus 0
 - **Alarms & Reminders** — Set time-based alarms and reminders with background scheduler
 
 ### FastSwap File Transfer
+- **TLS-Encrypted** — End-to-end encryption via self-signed TLS (port 53318)
 - **Cross-Platform Sharing** — LocalSend v2.0 protocol compatible
-- **Network Discovery** — Automatic subnet scanning (1–254) for nearby devices
+- **Network Discovery** — Automatic subnet scanning (1–254) for nearby devices (HTTPS-only)
 - **Approval Flow** — Full-screen popup for receiver to accept/deny transfers
 - **Real-Time Progress** — Per-file progress bars with speed and ETA
 - **Multi-File/Folder** — Send entire directories with recursive scanning
@@ -116,10 +117,11 @@ src/
 │   │   ├── device.rs         # Device, RegisterRequest, Announce
 │   │   ├── transfer.rs       # FileInfo, PrepareUpload, ConfirmUpload
 │   │   └── progress.rs       # FileProgress, TransferProgress with speed/ETA
+│   ├── tls.rs                # Self-signed TLS cert generation (rcgen + ring)
 │   └── network/
-│       ├── discovery.rs      # UDP-based subnet scanning (LocalSend protocol)
-│       ├── server.rs         # Axum HTTP server (receive files, handle approval)
-│       └── client.rs         # HTTP client (send files, poll server)
+│       ├── discovery.rs      # HTTPS subnet scanning (LocalSend protocol)
+│       ├── server.rs         # Axum HTTP server + TLS proxy (receive files, handle approval)
+│       └── client.rs         # HTTPS client (send files, poll server)
 ├── platform/
 │   ├── app_launcher.rs       # OS-specific app launch/close (macOS `open -a`, Windows `start`, Linux)
 │   ├── file_system.rs        # File operations abstraction
@@ -163,7 +165,7 @@ Audio → VAD (FFT spectral) → Whisper STT → NLU (SBERT + NER) → Plugin Sy
 - macOS 10.13+, Windows 10+, or Linux (x86_64)
 - 4 GB RAM (8 GB recommended)
 - Microphone access
-- Network access for FastSwap (port 53317)
+- Network access for FastSwap (port 53318 for TLS, port 53317 for HTTP fallback)
 
 ### Build & Run
 
@@ -334,7 +336,7 @@ RUST_LOG=igrisv3=debug cargo run
 | Camera error | Ensure no other app is using the camera |
 | Volume/Brightness not working | macOS: System Settings → Privacy → Automation |
 | Alarm not triggering | Background scheduler checks every 10 seconds |
-| FastSwap not finding devices | Ensure devices are on the same network subnet, allow port 53317 in firewall |
+| FastSwap not finding devices | Ensure devices are on the same network subnet, allow port 53318 (TLS) in firewall |
 | espeak-ng-data not found | Install espeak-ng: `brew install espeak-ng` (macOS) |
 
 ---
