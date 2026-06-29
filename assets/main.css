@@ -1,0 +1,402 @@
+/* ========================================
+   IGRIS - Advanced Futuristic UI Animations
+   ======================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+* {
+    font-family: 'Inter', sans-serif;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* ========================================
+   Scrollbar Styling
+   ======================================== */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(6, 182, 212, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #06b6d4, #ec4899);
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #0891b2, #db2777);
+}
+
+/* ========================================
+   Advanced Animations
+   ======================================== */
+
+/* Glitch Text Animation */
+@keyframes glitch-text {
+    0% {
+        clip-path: polygon(0 0, 100% 0, 100% 35%, 0 36%);
+        transform: translate(0);
+    }
+    20% {
+        clip-path: polygon(0 53%, 100% 61%, 100% 100%, 0 100%);
+        transform: translate(-3px, -3px);
+    }
+    40% {
+        clip-path: polygon(0 1%, 100% 0, 100% 58%, 0 51%);
+        transform: translate(3px, 3px);
+    }
+    60% {
+        clip-path: polygon(0 35%, 100% 38%, 100% 100%, 0 100%);
+        transform: translate(-2px, 2px);
+    }
+    80% {
+        clip-path: polygon(0 25%, 100% 58%, 100% 58%, 0 71%);
+        transform: translate(2px, -2px);
+    }
+    100% {
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+        transform: translate(0);
+    }
+}
+
+.animate-glitch-text {
+    animation: glitch-text 6s ease-in-out infinite;
+}
+
+/* Pulse Text Animation */
+@keyframes pulse-text {
+    0%, 100% {
+        opacity: 1;
+        text-shadow: 0 0 20px rgba(6, 182, 212, 0.8), 0 0 40px rgba(6, 182, 212, 0.4);
+    }
+    50% {
+        opacity: 0.9;
+        text-shadow: 0 0 30px rgba(139, 92, 246, 0.8), 0 0 60px rgba(139, 92, 246, 0.4);
+    }
+}
+
+.animate-pulse-text {
+    animation: pulse-text 3s ease-in-out infinite;
+}
+
+/* Rotate Slow for SVG */
+@keyframes rotate-slow {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-rotate-slow {
+    animation: rotate-slow 30s linear infinite;
+}
+
+/* Rotate Reverse */
+@keyframes rotate-reverse {
+    from {
+        transform: rotate(360deg);
+    }
+    to {
+        transform: rotate(0deg);
+    }
+}
+
+.animate-rotate-reverse {
+    animation: rotate-reverse 25s linear infinite;
+}
+
+/* Pulse Ring Animation */
+@keyframes pulse-ring {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-pulse-ring {
+    animation: pulse-ring 3s ease-in-out infinite;
+}
+
+/* Pulse Intense - Core glow */
+@keyframes pulse-intense {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
+
+.animate-pulse-intense {
+    animation: pulse-intense 2.5s ease-in-out infinite;
+}
+
+/* Spin Slow - Inner rotation */
+@keyframes spin-slow {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin-slow {
+    animation: spin-slow 8s linear infinite;
+}
+
+/* Orbit Animation */
+@keyframes orbit {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-orbit {
+    animation: orbit 10s linear infinite;
+}
+
+.animate-orbit-reverse {
+    animation: orbit 15s linear infinite reverse;
+}
+
+/* Wave Morph Animation */
+@keyframes wave-morph {
+    0%, 100% {
+        d: path("M0,32 Q10,20 20,16 T40,8 T60,4 T80,2 T100,4 T120,8 T140,16 T160,32 T180,48 T200,50 T220,48 T240,40 T260,32 T280,32");
+    }
+    25% {
+        d: path("M0,32 Q10,10 20,6 T40,0 T60,0 T80,0 T100,0 T120,6 T140,16 T160,32 T180,48 T200,60 T220,50 T240,38 T260,32 T280,32");
+    }
+    50% {
+        d: path("M0,32 Q10,24 20,20 T40,12 T60,8 T80,4 T100,8 T120,12 T140,20 T160,32 T180,44 T200,48 T220,44 T240,36 T260,32 T280,32");
+    }
+    75% {
+        d: path("M0,32 Q10,16 20,8 T40,2 T60,0 T80,2 T100,6 T120,14 T140,24 T160,32 T180,40 T200,44 T220,40 T240,32 T260,32 T280,32");
+    }
+}
+
+.animate-wave-morph {
+    animation: wave-morph 4s ease-in-out infinite;
+}
+
+/* Border Pulse Animation */
+@keyframes border-pulse {
+    0%, 100% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.animate-border-pulse {
+    animation: border-pulse 2s ease-in-out infinite;
+}
+
+/* Bar Animations for Signal */
+@keyframes bar-1 {
+    0%, 100% { height: 20%; }
+    50% { height: 100%; }
+}
+
+@keyframes bar-2 {
+    0%, 100% { height: 30%; }
+    50% { height: 80%; }
+}
+
+@keyframes bar-3 {
+    0%, 100% { height: 50%; }
+    50% { height: 100%; }
+}
+
+@keyframes bar-4 {
+    0%, 100% { height: 30%; }
+    50% { height: 70%; }
+}
+
+@keyframes bar-5 {
+    0%, 100% { height: 20%; }
+    50% { height: 60%; }
+}
+
+.animate-bar-1 { animation: bar-1 0.8s ease-in-out infinite; }
+.animate-bar-2 { animation: bar-2 0.8s ease-in-out infinite 0.1s; }
+.animate-bar-3 { animation: bar-3 0.8s ease-in-out infinite 0.2s; }
+.animate-bar-4 { animation: bar-4 0.8s ease-in-out infinite 0.3s; }
+.animate-bar-5 { animation: bar-5 0.8s ease-in-out infinite 0.4s; }
+
+/* Typing Cursor */
+@keyframes typing-cursor {
+    0%, 100% {
+        border-right: 2px solid #ec4899;
+    }
+    50% {
+        border-right: 2px solid transparent;
+    }
+}
+
+.animate-typing-cursor {
+    animation: typing-cursor 1s step-end infinite;
+    border-right: 2px solid #ec4899;
+    padding-right: 2px;
+}
+
+/* Scanlines Effect */
+.scanlines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    animation: scanlines-move 8s linear infinite;
+}
+
+@keyframes scanlines-move {
+    0% {
+        transform: translateY(0);
+    }
+    100% {
+        transform: translateY(10px);
+    }
+}
+
+/* ========================================
+   Utility Styles
+   ======================================== */
+
+.perspective {
+    perspective: 1000px;
+}
+
+/* Gradient Text */
+.gradient-text {
+    background: linear-gradient(135deg, #06b6d4 0%, #a855f7 50%, #ec4899 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Glass morphism */
+.glass {
+    background: rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(34, 211, 238, 0.2);
+}
+
+/* Neon glow */
+.neon-glow-cyan {
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.8), 
+                inset 0 0 20px rgba(6, 182, 212, 0.1);
+}
+
+.neon-glow-purple {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.8), 
+                inset 0 0 20px rgba(139, 92, 246, 0.1);
+}
+
+.neon-glow-pink {
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.8), 
+                inset 0 0 20px rgba(236, 72, 153, 0.1);
+}
+
+/* Hover effects */
+button, [role="button"], input {
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+button:hover, [role="button"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.5);
+}
+
+/* Smooth scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+@media (max-width: 768px) {
+    .fixed {
+        font-size: 0.875rem;
+    }
+    
+    .w-80 {
+        width: 60vw;
+    }
+    
+    .h-80 {
+        height: 60vw;
+    }
+    
+    .text-5xl {
+        font-size: 2rem;
+    }
+    
+    #logs-container {
+        max-height: 150px !important;
+    }
+}
+
+/* ========================================
+   Dark Mode (Default)
+   ======================================== */
+
+body {
+    background: #000000;
+    color: #e0e7ff;
+}
+
+/* Selection color */
+::selection {
+    background: rgba(6, 182, 212, 0.3);
+    color: #06b6d4;
+}
+
+::-moz-selection {
+    background: rgba(6, 182, 212, 0.3);
+    color: #06b6d4;
+}
+
+/* ========================================
+   Advanced SVG Filters
+   ======================================== */
+
+@supports (filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.8))) {
+    .svg-glow {
+        filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.8));
+    }
+}

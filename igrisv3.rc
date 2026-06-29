@@ -1,0 +1,4 @@
+IDI_ICON1 ICON "icons/igris_icon.ico"
+
+// Embed manifest for administrator privileges
+1 RT_MANIFEST "igrisv3.exe.manifest"

@@ -1,0 +1,19 @@
+# Rust build artifacts
+target/
+
+# FastSwap TLS certs & downloaded models
+pkg/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

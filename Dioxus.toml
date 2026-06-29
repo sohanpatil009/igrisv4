@@ -1,0 +1,59 @@
+[application]
+name = "IGRIS"
+title = "IGRIS - AI Voice Assistant"
+
+[web.app]
+
+
+# HTML title tag content
+title = "IGRIS - Voice Assistant"
+
+# include `assets` in web platform
+[web.resource]
+
+# Additional CSS style files
+style = []
+
+# Additional JavaScript files
+script = []
+
+[web.resource.dev]
+
+# Javascript code file
+# serve: [dev-server] only
+script = []
+[bundle]
+publisher="Sohan Patil"
+identifier = "com.sohan.igrisv3"
+
+# No external resources needed - plugins are now compiled into binary
+
+# macOS permissions for camera and microphone access
+[bundle.macos]
+info_plist = """
+<key>NSCameraUsageDescription</key>
+<string>IGRIS needs access to your camera to take photos and record videos.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>IGRIS needs access to your microphone for voice commands and video recording.</string>
+<key>NSCameraUseContinuityCameraDeviceType</key>
+<true/>
+"""
+
+
+
+[web.watcher]
+# FIX: Changed "src" (string) to ["src"] (array/sequence) to satisfy the TOML parser
+watch_path = ["src"] 
+ignore_paths = []
+
+
+# Desktop/Bundle Configuration
+
+category = "Utility"
+short_description = "Advanced AI Voice Assistant"
+long_description = "IGRIS is a powerful voice-activated AI assistant with camera, file management, and app control capabilities."
+homepage = "https://github.com/your-repo/igris"
+license_files = ["LICENSE"]
+
+# Icon configuration
+icon = ["icons/igris_icon.icns"]
