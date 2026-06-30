@@ -50,6 +50,7 @@ impl PlatformSetup for WindowsSetup {
             self.pkg_dir.join("audio"),
             self.pkg_dir.join("ffmpeg"),
             self.pkg_dir.join("piper"),
+            self.pkg_dir.join("models/sense-voice"),
             self.pkg_dir.join("models/bold_voice"),
             self.pkg_dir.join("downloads"),
         ];
