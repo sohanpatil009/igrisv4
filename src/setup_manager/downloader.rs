@@ -145,17 +145,6 @@ impl FileDownloader {
                 url: get_ffmpeg_url(),
                 filename: get_ffmpeg_filename(),
             },
-            // SenseVoice STT model files (direct HuggingFace downloads)
-            DownloadFile {
-                name: "SenseVoice Model",
-                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.onnx".to_string(),
-                filename: "sense-voice-model.onnx".to_string(),
-            },
-            DownloadFile {
-                name: "SenseVoice Tokens",
-                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt".to_string(),
-                filename: "sense-voice-tokens.txt".to_string(),
-            },
             DownloadFile {
                 name: "Voice Model",
                 url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx".to_string(),
@@ -190,6 +179,20 @@ impl FileDownloader {
             url: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf".to_string(),
             filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf".to_string(),
         });
+
+        // SenseVoice STT model — skip download in online mode (uses Parakeet ASR)
+        if !crate::online::is_online_mode() {
+            files.push(DownloadFile {
+                name: "SenseVoice Model",
+                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.onnx".to_string(),
+                filename: "sense-voice-model.onnx".to_string(),
+            });
+            files.push(DownloadFile {
+                name: "SenseVoice Tokens",
+                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt".to_string(),
+                filename: "sense-voice-tokens.txt".to_string(),
+            });
+        }
 
         // Only add LLVM if not installed (skip on macOS - use brew instead)
         #[cfg(not(target_os = "macos"))]
