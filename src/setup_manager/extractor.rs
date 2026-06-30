@@ -417,6 +417,18 @@ export CPPFLAGS="-I{llvm_path}/include"
                 extract_to: PathBuf::from("models/bold_voice/en_US-libritts_r-medium.onnx.json"),
                 flatten: false,
             },
+            ExtractTask {
+                name: "SenseVoice Model",
+                archive: "sense-voice-model.onnx".to_string(),
+                extract_to: PathBuf::from("models/sense-voice/model.onnx"),
+                flatten: false,
+            },
+            ExtractTask {
+                name: "SenseVoice Tokens",
+                archive: "sense-voice-tokens.txt".to_string(),
+                extract_to: PathBuf::from("models/sense-voice/tokens.txt"),
+                flatten: false,
+            },
         ];
         
         // Add FFmpeg extraction task (Windows and Linux only, macOS uses brew)

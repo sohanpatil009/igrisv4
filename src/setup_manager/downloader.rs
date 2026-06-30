@@ -145,11 +145,16 @@ impl FileDownloader {
                 url: get_ffmpeg_url(),
                 filename: get_ffmpeg_filename(),
             },
-            // SenseVoice STT model via sherpa-onnx (f32, ~230 MB compressed)
+            // SenseVoice STT model files (direct HuggingFace downloads)
             DownloadFile {
                 name: "SenseVoice Model",
-                url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2".to_string(),
-                filename: "sense-voice.tar.bz2".to_string(),
+                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.onnx".to_string(),
+                filename: "sense-voice-model.onnx".to_string(),
+            },
+            DownloadFile {
+                name: "SenseVoice Tokens",
+                url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt".to_string(),
+                filename: "sense-voice-tokens.txt".to_string(),
             },
             DownloadFile {
                 name: "Voice Model",
