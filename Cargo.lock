@@ -3725,6 +3725,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "sha2",
  "sherpa-onnx",
  "tempfile",
  "tokenizers",

@@ -45,6 +45,9 @@ pub mod fastswap;
 // Online mode (NVIDIA NIM API-based STT & Reasoning)
 pub mod online;
 
+// Desktop Ecosystem (cross-device clipboard, discovery, sync)
+pub mod eco;
+
 // Global state for search results UI (shared across modules)
 #[derive(Clone, Debug, Default)]
 pub struct SearchState {

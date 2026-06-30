@@ -1,0 +1,22 @@
+pub mod clipboard;
+pub mod config;
+pub mod constants;
+pub mod crypto;
+pub mod device;
+pub mod discovery;
+pub mod errors;
+pub mod events;
+pub mod manager;
+pub mod permissions;
+pub mod protocol;
+pub mod storage;
+pub mod sync;
+pub mod transport;
+
+pub use clipboard::{ClipboardData, ClipboardManager};
+pub use config::EcosystemConfig;
+pub use device::{Capabilities, DeviceStatus, EcoDevice};
+pub use errors::{EcoError, EcoResult};
+pub use events::{EcoEvent, EventBus};
+pub use manager::{EcoManager, init_eco_manager, start_eco_manager, shutdown_eco_manager, ECO_MANAGER, get_eco_manager};
+pub use protocol::{EcoMessage, MessageType};

@@ -4,6 +4,7 @@ pub mod app_launcher;
 pub mod file_system;
 pub mod process_builder;
 pub mod system_control;
+pub mod ecosystem;
 
 pub use app_launcher::{AppLauncher, AppLauncherImpl};
 pub use file_system::{FileSystemProvider, FileSystemProviderImpl};

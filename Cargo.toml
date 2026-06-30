@@ -31,6 +31,7 @@ image = { version = "0.24", features = ["jpeg", "png"] }
 dirs = "5.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 rand = "0.8"
+sha2 = "0.10"
 
 # NLU Dependencies
 anyhow = "1.0"
