@@ -16,8 +16,18 @@ struct ChatRequest {
     model: String,
     messages: Vec<Message>,
     temperature: f32,
-    max_tokens: u32,
     top_p: f32,
+    max_tokens: u32,
+    seed: u32,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chat_template_kwargs: Option<ChatTemplateKwargs>,
+}
+
+#[derive(Serialize)]
+struct ChatTemplateKwargs {
+    enable_thinking: bool,
+    clear_thinking: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -78,11 +88,17 @@ impl OnlineReasoning {
         ];
 
         let request = ChatRequest {
-            model: "nvidia/glm-5-1".to_string(),
+            model: "z-ai/glm-5.1".to_string(),
             messages,
-            temperature: 0.7,
-            max_tokens: 512,
-            top_p: 0.9,
+            temperature: 1.0,
+            top_p: 1.0,
+            max_tokens: 16384,
+            seed: 42,
+            stream: false,
+            chat_template_kwargs: Some(ChatTemplateKwargs {
+                enable_thinking: true,
+                clear_thinking: false,
+            }),
         };
 
         let response = self
