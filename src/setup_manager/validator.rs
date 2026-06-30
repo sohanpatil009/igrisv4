@@ -27,7 +27,7 @@ impl SetupValidator {
     pub fn validate_all(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.validate_llvm()?;
         self.validate_piper()?;
-        self.validate_whisper_model()?;
+        self.validate_sensevoice_model()?;
         self.validate_voice_model()?;
         self.validate_directories()?;
 
@@ -82,28 +82,26 @@ impl SetupValidator {
         Ok(())
     }
 
-    fn validate_whisper_model(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // Try quantized model first, fallback to base
-        let model_paths = [
-            self.pkg_dir.join("models/ggml-base-q8_0.bin"),
-            self.pkg_dir.join("models/ggml-base.bin"),
-        ];
-        
-        let model_path = model_paths.iter()
-            .find(|p| p.exists())
-            .ok_or("Whisper model not found (ggml-base-q8_0.bin or ggml-base.bin)")?;
+    fn validate_sensevoice_model(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let model_path = self.pkg_dir.join("models/sense-voice/model.onnx");
+        let tokens_path = self.pkg_dir.join("models/sense-voice/tokens.txt");
+
+        if !model_path.exists() {
+            return Err("SenseVoice model not found (models/sense-voice/model.onnx)".into());
+        }
+        if !tokens_path.exists() {
+            return Err("SenseVoice tokens not found (models/sense-voice/tokens.txt)".into());
+        }
 
         let metadata = std::fs::metadata(&model_path)?;
         let size = metadata.len();
 
         if size < 1_000_000 {
-            // Less than 1MB = invalid
-            return Err("Whisper model file is too small (corrupted?)".into());
+            return Err("SenseVoice model file is too small (corrupted?)".into());
         }
 
         println!(
-            "✅ Whisper model validated: {} ({:.2} MB)",
-            model_path.file_name().unwrap().to_string_lossy(),
+            "✅ SenseVoice model validated: {:.2} MB",
             size as f64 / 1_000_000.0
         );
         Ok(())
@@ -145,6 +143,7 @@ impl SetupValidator {
             self.pkg_dir.join("audio"),
             self.pkg_dir.join("models"),
             self.pkg_dir.join("models/bold_voice"),
+            self.pkg_dir.join("models/sense-voice"),
         ];
 
         for dir in dirs {

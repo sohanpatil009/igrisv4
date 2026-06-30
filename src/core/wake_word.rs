@@ -1,12 +1,11 @@
 // Wake word detection - minimal output
 use crate::core::audio_capture::{capture_audio_vad, CaptureConfig, CaptureMode};
-use crate::core::stt::transcribe_audio;
+use crate::core::stt::{transcribe_audio, SttEngine};
 use std::sync::atomic::Ordering;
-use whisper_rs::WhisperContext;
 
 /// Listen for wake word with minimal output
 pub fn listen_for_wake_word(
-    whisper_ctx: &WhisperContext,
+    stt: &SttEngine,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let wake_word = "hello";
     
@@ -28,7 +27,7 @@ pub fn listen_for_wake_word(
             continue;
         }
 
-        let transcription = match transcribe_audio(&result.samples, whisper_ctx) {
+        let transcription = match transcribe_audio(&result.samples, stt) {
             Ok(text) => text,
             Err(_) => continue,
         };

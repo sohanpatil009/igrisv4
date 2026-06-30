@@ -117,7 +117,8 @@ pub fn verify_installation() -> Result<bool, Box<dyn std::error::Error>> {
 
     let required_paths = vec![
         pkg_dir.join("piper"),
-        pkg_dir.join("models/ggml-base.bin"),
+        pkg_dir.join("models/sense-voice/model.onnx"),
+        pkg_dir.join("models/sense-voice/tokens.txt"),
         pkg_dir.join("models/sbert/pytorch_model.bin"),
         pkg_dir.join("models/sbert/config.json"),
         pkg_dir.join("models/sbert/tokenizer.json"),

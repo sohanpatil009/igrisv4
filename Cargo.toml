@@ -12,7 +12,7 @@ dioxus = { version = "0.7", features = ["desktop"] }
 dioxus-desktop = "0.7"
 
 # Speech & Audio
-whisper-rs = "0.11.0"
+sherpa-onnx = "1.11"
 cpal = "0.16"
 rodio = "0.17"
 manganis="0.7.0"

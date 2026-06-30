@@ -145,12 +145,11 @@ impl FileDownloader {
                 url: get_ffmpeg_url(),
                 filename: get_ffmpeg_filename(),
             },
-            // Models are platform-independent
-            // Using quantized q8_0 model for faster inference
+            // SenseVoice STT model via sherpa-onnx (f32, ~230 MB compressed)
             DownloadFile {
-                name: "Whisper Model",
-                url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q8_0.bin".to_string(),
-                filename: "ggml-base-q8_0.bin".to_string(),
+                name: "SenseVoice Model",
+                url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2".to_string(),
+                filename: "sense-voice.tar.bz2".to_string(),
             },
             DownloadFile {
                 name: "Voice Model",

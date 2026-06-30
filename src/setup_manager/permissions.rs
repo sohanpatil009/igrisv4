@@ -36,13 +36,13 @@ impl PermissionsConfig {
         let mut modules = HashMap::new();
 
         modules.insert(
-            "whisper_stt".to_string(),
+            "sensevoice_stt".to_string(),
             ModulePermission {
-                name: "Speech Recognition (Whisper)".to_string(),
-                description: "Converts speech to text using OpenAI Whisper model (~140MB)".to_string(),
+                name: "Speech Recognition (SenseVoice)".to_string(),
+                description: "Converts speech to text using SenseVoice f32 model via sherpa-onnx (~940MB)".to_string(),
                 status: PermissionStatus::Pending,
                 required: true,
-                download_size_mb: 140.0,
+                download_size_mb: 940.0,
             },
         );
 
@@ -251,15 +251,15 @@ mod tests {
     fn test_default_permissions() {
         let config = PermissionsConfig::default_config();
         assert!(!config.modules.is_empty());
-        assert!(config.modules.contains_key("whisper_stt"));
+        assert!(config.modules.contains_key("sensevoice_stt"));
         assert!(config.modules.contains_key("sbert_nlu"));
     }
 
     #[test]
     fn test_grant_permission() {
         let mut config = PermissionsConfig::default_config();
-        config.grant_permission("whisper_stt").unwrap();
-        assert!(config.is_permitted("whisper_stt"));
+        config.grant_permission("sensevoice_stt").unwrap();
+        assert!(config.is_permitted("sensevoice_stt"));
     }
 
     #[test]
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn test_total_download_size() {
         let mut config = PermissionsConfig::default_config();
-        config.grant_permission("whisper_stt").unwrap();
+        config.grant_permission("sensevoice_stt").unwrap();
         config.grant_permission("sbert_nlu").unwrap();
         let size = config.total_download_size();
         assert!(size > 0.0);

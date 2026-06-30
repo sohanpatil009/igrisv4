@@ -157,16 +157,15 @@ impl PlatformSetup for MacOSSetup {
         let ffmpeg_ok = command_exists("ffmpeg");
         let tts_ok = command_exists("piper") || self.pkg_dir.join("piper/piper").exists();
         
-        // Check for quantized model (q8_0) which is what downloader downloads
-        let whisper_ok = self.pkg_dir.join("models/ggml-base-q8_0.bin").exists() 
-            || self.pkg_dir.join("models/ggml-base.bin").exists();
+        // Check for SenseVoice model (downloaded by setup)
+        let sensevoice_ok = self.pkg_dir.join("models/sense-voice/model.onnx").exists();
         
         let voice_ok = self.pkg_dir.join("models/bold_voice/en_US-libritts_r-medium.onnx").exists();
         let sbert_ok = self.pkg_dir.join("models/sbert/pytorch_model.bin").exists();
         
         let llvm_ok = command_exists("clang");
         
-        ffmpeg_ok && tts_ok && whisper_ok && voice_ok && sbert_ok && llvm_ok
+        ffmpeg_ok && tts_ok && sensevoice_ok && voice_ok && sbert_ok && llvm_ok
     }
     
     fn create_directories(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -174,6 +173,7 @@ impl PlatformSetup for MacOSSetup {
             self.pkg_dir.join("audio"),
             self.pkg_dir.join("models/bold_voice"),
             self.pkg_dir.join("models/sbert"),
+            self.pkg_dir.join("models/sense-voice"),
             self.pkg_dir.join("downloads"),
         ];
         
@@ -270,41 +270,50 @@ impl PlatformSetup for MacOSSetup {
     }
     
     async fn install_whisper_model(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Use quantized model for better performance (matches downloader)
-        let model_path = self.pkg_dir.join("models/ggml-base-q8_0.bin");
-        let download_path = self.pkg_dir.join("downloads/ggml-base-q8_0.bin");
+        let model_dir = self.pkg_dir.join("models/sense-voice");
+        let model_path = model_dir.join("model.onnx");
+        let tokens_path = model_dir.join("tokens.txt");
+        let download_model = self.pkg_dir.join("downloads/sense-voice-model.onnx");
+        let download_tokens = self.pkg_dir.join("downloads/sense-voice-tokens.txt");
         
-        // Check if already exists in final location
-        if model_path.exists() {
+        if model_path.exists() && tokens_path.exists() {
             self.send_event(SetupEvent::Completed {
-                name: "Whisper Model (already exists)".to_string(),
+                name: "SenseVoice Model (already exists)".to_string(),
             });
             return Ok(());
         }
         
-        // Check if downloaded but not moved
-        if download_path.exists() {
-            std::fs::copy(&download_path, &model_path)?;
+        std::fs::create_dir_all(&model_dir)?;
+        
+        // Copy from downloads if available
+        if download_model.exists() {
+            std::fs::copy(&download_model, &model_path)?;
+        }
+        if download_tokens.exists() {
+            std::fs::copy(&download_tokens, &tokens_path)?;
+        }
+        
+        if model_path.exists() && tokens_path.exists() {
             self.send_event(SetupEvent::Completed {
-                name: "Whisper Model".to_string(),
+                name: "SenseVoice Model".to_string(),
             });
             return Ok(());
         }
         
+        // Download directly
         self.send_event(SetupEvent::Downloading {
-            name: "Whisper Model".to_string(),
+            name: "SenseVoice Model".to_string(),
             progress: 0,
         });
         
-        // Download quantized model
-        let url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q8_0.bin";
-        self.download_file(url, &download_path).await?;
+        let model_url = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.onnx";
+        let tokens_url = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt";
         
-        // Move to final location
-        std::fs::copy(&download_path, &model_path)?;
+        self.download_file(model_url, &model_path).await?;
+        self.download_file(tokens_url, &tokens_path).await?;
         
         self.send_event(SetupEvent::Completed {
-            name: "Whisper Model".to_string(),
+            name: "SenseVoice Model".to_string(),
         });
         
         Ok(())
@@ -491,11 +500,12 @@ impl PlatformSetup for MacOSSetup {
             return Err("Piper not found in PATH or pkg/piper".into());
         }
         
-        // Check models (support both quantized and non-quantized)
-        let whisper_q8 = self.pkg_dir.join("models/ggml-base-q8_0.bin");
-        let whisper_base = self.pkg_dir.join("models/ggml-base.bin");
-        if !whisper_q8.exists() && !whisper_base.exists() {
-            return Err("Whisper model not found (neither ggml-base-q8_0.bin nor ggml-base.bin)".into());
+        // Check SenseVoice model
+        if !self.pkg_dir.join("models/sense-voice/model.onnx").exists() {
+            return Err("SenseVoice model not found (models/sense-voice/model.onnx)".into());
+        }
+        if !self.pkg_dir.join("models/sense-voice/tokens.txt").exists() {
+            return Err("SenseVoice tokens not found (models/sense-voice/tokens.txt)".into());
         }
         
         if !self.pkg_dir.join("models/sbert/pytorch_model.bin").exists() {

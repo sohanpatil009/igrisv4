@@ -25,7 +25,7 @@ use commands::app_utils::list_running_apps;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use core::stt::{init_whisper_context, transcribe_audio, hybrid_transcribe_audio};
+use core::stt::{init_stt_engine, SttEngine, transcribe_audio, hybrid_transcribe_audio};
 use core::tts::TTS_ENGINE;
 use core::wake_word::listen_for_wake_word;
 #[cfg(feature = "candle")]
@@ -326,10 +326,10 @@ async fn start_voice_assistant() {
         }
     }
 
-    let whisper_ctx = match init_whisper_context() {
-        Ok(ctx) => {
+    let stt_engine = match init_stt_engine() {
+        Ok(engine) => {
             update_status("Initialized - Waiting for wake word");
-            add_log("Whisper model loaded successfully", LogLevel::Success);
+            add_log("SenseVoice model loaded successfully", LogLevel::Success);
 
             // Speak IGRIS greeting on app launch
             if let Err(e) = utils::greetings::speak_invoke_greeting() {
@@ -344,11 +344,11 @@ async fn start_voice_assistant() {
                 state.setup_in_progress = false;
             }
 
-            ctx
+            engine
         }
         Err(e) => {
             update_status("Initialization Failed");
-            add_log(&format!("Failed to initialize: {}", e), LogLevel::Error);
+            add_log(&format!("Failed to initialize STT: {}", e), LogLevel::Error);
             let _ = core::tts::speak(
                 "Sorry, I failed to initialize. Please check the model files and restart.",
             );
@@ -377,7 +377,7 @@ async fn start_voice_assistant() {
 update_status("Sleeping - Say 'hello' to wake me");
 add_log("Listening for wake word 'hello'...", LogLevel::Info);
 
-        match listen_for_wake_word(&whisper_ctx) {
+        match listen_for_wake_word(&stt_engine) {
             Ok(_) => {
                 // Check for reset signal right after wake word
                 if RESET_FLAG.swap(false, Ordering::Relaxed) {
@@ -394,7 +394,7 @@ add_log("Listening for wake word 'hello'...", LogLevel::Info);
                 add_log("Wake word detected!", LogLevel::Success);
                 let _ = core::tts::speak("Yes, I'm listening. What can I do for you?");
 
-                match continuous_listening_mode(&whisper_ctx).await {
+                match continuous_listening_mode(&stt_engine).await {
                     Ok(should_exit) => {
                         if should_exit {
                             {
@@ -428,7 +428,7 @@ add_log("Listening for wake word 'hello'...", LogLevel::Info);
 }
 
 async fn continuous_listening_mode(
-    whisper_ctx: &whisper_rs::WhisperContext,
+    stt_engine: &SttEngine,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     update_status("Listening Mode");
     add_log("Entering continuous listening mode (VAD-optimized)", LogLevel::Info);
@@ -472,7 +472,7 @@ async fn continuous_listening_mode(
             add_log(&format!("Speech detected in {}ms", time_ms), LogLevel::Info);
         }
 
-        let command = match hybrid_transcribe_audio(&capture_result.samples, whisper_ctx).await {
+        let command = match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
             Ok(text) => text.trim().to_string(),
             Err(_) => continue,
         };
@@ -488,7 +488,7 @@ async fn continuous_listening_mode(
             state.last_command = command.clone();
         }
 
-        let should_exit = process_voice_command(&command, whisper_ctx).await?;
+        let should_exit = process_voice_command(&command, stt_engine).await?;
 
         if should_exit {
             let mut state = ASSISTANT_STATE.lock().unwrap();
@@ -513,7 +513,7 @@ async fn continuous_listening_mode(
 
 async fn process_voice_command(
     command: &str,
-    whisper_ctx: &whisper_rs::WhisperContext,
+    _stt_engine: &SttEngine,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     // Check for reset signal from hotkey
     if RESET_FLAG.swap(false, Ordering::Relaxed) {

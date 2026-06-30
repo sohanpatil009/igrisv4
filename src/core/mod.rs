@@ -10,7 +10,7 @@ pub mod about;
 pub mod local_llm;
 
 // Re-exports for convenience
-pub use stt::{init_whisper_context, transcribe_audio, hybrid_transcribe_audio};
+pub use stt::{init_stt_engine, SttEngine, transcribe_audio, hybrid_transcribe_audio};
 pub use tts::{speak, speak_compat, TTS_ENGINE};
 pub use audio_capture::{capture_audio_vad, CaptureConfig, CaptureResult, CaptureMode};
 pub use wake_word::listen_for_wake_word;

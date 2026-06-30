@@ -96,13 +96,13 @@ pub const SLIDES: &[Slide] = &[
         content: SlideContent::Architecture,
         narration: "Here's my main system architecture. \
                    At the input layer, I receive audio from your microphone and hotkey triggers with Control Shift Space. \
-                   The core processing includes Voice Activity Detection, Wake Word recognition, Whisper speech-to-text, NLU engine, and Command Router. \
+                   The core processing includes Voice Activity Detection, Wake Word recognition, SenseVoice speech-to-text, NLU engine, and Command Router. \
                    My plugin system manages over 50 applications. \
                    Output goes through Piper text-to-speech, Dioxus UI, and action executors. \
                    Supporting modules include Setup Manager, Config, and File Share.",
         bullet_points: &[
             "🎤 Input: Microphone + Hotkey (Ctrl+Shift+Space)",
-            "⚙️ Core: VAD → Wake Word → Whisper → NLU → Router",
+            "⚙️ Core: VAD → Wake Word → SenseVoice → NLU → Router",
             "🔌 Plugins: 50+ Apps, Camera, File Share, Web",
             "🔊 Output: Piper TTS + Dioxus UI + Actions",
         ],
@@ -117,7 +117,7 @@ pub const SLIDES: &[Slide] = &[
                    Step 1: Audio capture using CPAL at 16 kilohertz mono. \
                    Step 2: Voice Activity Detection analyzes energy and zero-crossing rate. \
                    Step 3: Wake word detection listens for 'Arise' using fuzzy matching. \
-                   Step 4: Whisper base model converts speech to text. \
+                   Step 4: SenseVoice model via sherpa-onnx converts speech to text. \
                    Step 5: NLU with SBERT extracts intent and entities. \
                    Step 6: Action execution through the plugin system. \
                    Total response time is about 1.5 seconds, completely offline.",
@@ -125,7 +125,7 @@ pub const SLIDES: &[Slide] = &[
             "🎤 Audio (CPAL 16kHz)",
             "🔊 VAD (Energy + ZCR)",
             "👂 Wake Word (\"Arise\")",
-            "📝 Whisper STT",
+            "📝 SenseVoice STT",
             "🧠 NLU (SBERT)",
             "⚡ Action Execute",
         ],
@@ -200,14 +200,14 @@ pub const SLIDES: &[Slide] = &[
         content: SlideContent::SetupManager,
         narration: "My Setup Manager handles first-time initialization automatically. \
                    On first launch, it checks for required components. \
-                   The Downloader fetches Whisper model at 81 megabytes, Piper TTS, SBERT, and FFmpeg. \
+                   The Downloader fetches SenseVoice model at 60 megabytes, Piper TTS, SBERT, and FFmpeg. \
                    Downloads are platform-specific: Windows gets zips, Linux gets tar archives. \
                    The Extractor unpacks everything to correct locations. \
                    After extraction, downloads folder is deleted to save space. \
                    Total size is about 200 megabytes.",
         bullet_points: &[
             "🚀 First Launch: Check pkg/ folder",
-            "📥 Download: Whisper, Piper, SBERT, FFmpeg",
+            "📥 Download: SenseVoice, Piper, SBERT, FFmpeg",
             "📂 Extract: Platform-specific archives",
             "🗑️ Cleanup: Delete downloads after extraction",
         ],
@@ -221,7 +221,7 @@ pub const SLIDES: &[Slide] = &[
         narration: "My technology stack is optimized for performance. \
                    Rust for memory safety and speed. \
                    Dioxus 0.7 for cross-platform UI. \
-                   Whisper dot cpp for speech recognition. \
+                   sherpa-onnx with SenseVoice for speech recognition. \
                    Piper for text-to-speech. \
                    SBERT MiniLM for semantic understanding. \
                    FFmpeg for media capture. \
@@ -232,7 +232,7 @@ pub const SLIDES: &[Slide] = &[
         bullet_points: &[
             "🦀 Rust (Performance)",
             "⚛️ Dioxus 0.7 (UI)",
-            "🎙️ Whisper.cpp (STT)",
+            "🎙️ SenseVoice (STT)",
             "🔊 Piper (TTS)",
             "🧠 SBERT (NLU)",
             "🎬 FFmpeg (Media)",

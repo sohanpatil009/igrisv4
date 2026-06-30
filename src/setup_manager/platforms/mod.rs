@@ -33,7 +33,7 @@ pub trait PlatformSetup: Send + Sync {
     /// Install Piper TTS
     fn install_piper(&self) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
     
-    /// Install Whisper model
+    /// Install SenseVoice STT model
     fn install_whisper_model(&self) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
     
     /// Install SBERT model
@@ -42,7 +42,7 @@ pub trait PlatformSetup: Send + Sync {
     /// Install voice model for TTS
     fn install_voice_model(&self) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
     
-    /// Install LLVM (for whisper-rs compilation)
+    /// Install LLVM/Clang (for sherpa-onnx / build dependencies)
     fn install_llvm(&self) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
     
     /// Setup PATH environment variables

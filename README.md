@@ -289,7 +289,7 @@ Accessible via the **Settings Panel** (☰ menu button, top-right).
 
 | Model | Size | Purpose |
 |-------|------|---------|
-| `ggml-base.bin` / `ggml-base-q8_0.bin` | 81 MB | Whisper STT |
+| `model.int8.onnx` + `tokens.txt` | ~60 MB | SenseVoice STT (sherpa-onnx) |
 | `en_US-libritts_r-medium.onnx` | 50 MB | Piper TTS voice |
 | `all-MiniLM-L6-v2` | ~80 MB | SBERT sentence embeddings |
 | `espeak-ng-data` | — | Phoneme data for Piper |

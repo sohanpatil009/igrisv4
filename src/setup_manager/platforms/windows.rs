@@ -35,7 +35,8 @@ impl PlatformSetup for WindowsSetup {
             self.pkg_dir.join("audio"),
             self.pkg_dir.join("ffmpeg"),
             self.pkg_dir.join("piper"),
-            self.pkg_dir.join("models/ggml-base-q8_0.bin"),
+            self.pkg_dir.join("models/sense-voice/model.onnx"),
+            self.pkg_dir.join("models/sense-voice/tokens.txt"),
             self.pkg_dir.join("models/bold_voice/en_US-libritts_r-medium.onnx"),
         ];
         
