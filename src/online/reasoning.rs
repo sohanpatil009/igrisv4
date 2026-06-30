@@ -58,9 +58,8 @@ struct Usage {
 
 impl OnlineReasoning {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let api_key = env::var("NVIDIA_NIM_GLM_API_KEY")
-            .or_else(|_| env::var("NVIDIA_API_KEY"))
-            .map_err(|_| "NVIDIA_NIM_GLM_API_KEY not set in .env")?;
+        let api_key = env::var("NVIDIA_API_KEY")
+            .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
 
         let base_url = env::var("NVIDIA_NIM_GLM_BASE_URL")
             .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string());
