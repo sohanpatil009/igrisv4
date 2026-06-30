@@ -221,7 +221,7 @@ pub fn search_in_specific_browser(
 }
 
 /// Process web search command
-pub fn process_search_command(command: &str) -> Option<String> {
+pub async fn process_search_command(command: &str) -> Option<String> {
     let cmd_lower = command.to_lowercase();
     
     // Check if it's a search command
@@ -247,7 +247,7 @@ pub fn process_search_command(command: &str) -> Option<String> {
         || cmd_lower.contains("how");
     
     if should_read_results {
-        if let Some(answer) = search_and_read_results(&query) {
+        if let Some(answer) = search_and_read_results(&query).await {
             let _ = search_in_browser(&query, engine);
             return Some(answer);
         }
@@ -291,25 +291,20 @@ pub fn is_search_command(command: &str) -> bool {
 }
 
 /// Fetch search results from Google and extract featured snippet
-fn http_client() -> &'static reqwest::blocking::Client {
-    static CLIENT: std::sync::OnceLock<&reqwest::blocking::Client> = std::sync::OnceLock::new();
-    *CLIENT.get_or_init(|| {
-        Box::leak(Box::new(
-            reqwest::blocking::Client::builder()
-                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .expect("Failed to create HTTP client")
-        ))
-    })
+fn async_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("Failed to create HTTP client")
 }
 
-pub fn fetch_search_results(query: &str) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
+pub async fn fetch_search_results(query: &str) -> Result<Vec<SearchResult>, Box<dyn std::error::Error>> {
     let encoded_query = urlencoding::encode(query);
     let url = format!("https://www.google.com/search?q={}", encoded_query);
     
-    let response = http_client().get(&url).send()?;
-    let html_content = response.text()?;
+    let response = async_client().get(&url).send().await?;
+    let html_content = response.text().await?;
     
     parse_google_results(&html_content)
 }
@@ -395,9 +390,9 @@ fn extract_featured_snippet(document: &Html) -> Option<SearchResult> {
 }
 
 /// Search and read results aloud
-pub fn search_and_read_results(query: &str) -> Option<String> {
+pub async fn search_and_read_results(query: &str) -> Option<String> {
     // Fetch search results
-    match fetch_search_results(query) {
+    match fetch_search_results(query).await {
         Ok(results) => {
             if results.is_empty() {
                 return Some("I couldn't find any results for that query.".to_string());

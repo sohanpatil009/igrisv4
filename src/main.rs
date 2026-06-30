@@ -980,7 +980,7 @@ async fn process_voice_command(
                 "web_search" => {
                     add_log(&format!("Web search: {}", command), LogLevel::Info);
                     
-                    if let Some(response) = commands::web::process_search_command(command) {
+                    if let Some(response) = commands::web::process_search_command(command).await {
                         add_log(&response, LogLevel::Success);
                         let _ = core::tts::speak(&response);
                         return Ok(false);
@@ -1167,7 +1167,7 @@ async fn process_voice_command(
     
     // Check for web search commands
     if commands::web::is_search_command(command_to_use) {
-        if let Some(response) = commands::web::process_search_command(command_to_use) {
+        if let Some(response) = commands::web::process_search_command(command_to_use).await {
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             return Ok(false);
@@ -1218,7 +1218,7 @@ async fn process_voice_command(
         let _ = core::tts::speak("I don't have information about that. Let me search the web for you.");
         
         // Try to fetch and read search results
-        if let Some(answer) = commands::web::search_and_read_results(command_to_use) {
+        if let Some(answer) = commands::web::search_and_read_results(command_to_use).await {
             add_log(&answer, LogLevel::Success);
             let _ = core::tts::speak(&answer);
         } else {
@@ -1773,7 +1773,7 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
             response
         }
         "search_web" => {
-            let response = commands::web::search_and_read_results(command_to_use)
+            let response = commands::web::search_and_read_results(command_to_use).await
                 .unwrap_or_else(|| "Search failed.".to_string());
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
@@ -1846,21 +1846,21 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
                 format!("current weather in {}", location)
             };
             add_log(&format!("[Weather] Searching: {}", query), LogLevel::Info);
-            let response = commands::web::search_and_read_results(&query)
+            let response = commands::web::search_and_read_results(&query).await
                 .unwrap_or_else(|| "Weather lookup failed.".to_string());
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response
         }
         "tell_fact" => {
-            let response = commands::web::search_and_read_results("tell me an interesting fact")
+            let response = commands::web::search_and_read_results("tell me an interesting fact").await
                 .unwrap_or_else(|| "Search failed.".to_string());
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response
         }
         "tell_joke" => {
-            let response = commands::web::search_and_read_results("tell me a joke")
+            let response = commands::web::search_and_read_results("tell me a joke").await
                 .unwrap_or_else(|| "Search failed.".to_string());
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
