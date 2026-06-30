@@ -38,9 +38,16 @@ pub fn toggle_online_mode() -> bool {
 
 /// Initialize online mode from environment variable
 pub fn init_from_env() {
-    if let Ok(val) = std::env::var("IGRIS_ONLINE_MODE") {
-        if val == "true" || val == "1" {
+    match std::env::var("IGRIS_ONLINE_MODE") {
+        Ok(val) if val == "true" || val == "1" => {
+            println!("[Online] IGRIS_ONLINE_MODE=true found in env — enabling online mode");
             enable_online_mode();
+        }
+        Ok(val) => {
+            println!("[Online] IGRIS_ONLINE_MODE={} — staying offline", val);
+        }
+        Err(_) => {
+            println!("[Online] IGRIS_ONLINE_MODE not set — staying offline");
         }
     }
 }

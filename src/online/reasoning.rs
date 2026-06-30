@@ -74,6 +74,9 @@ impl OnlineReasoning {
     /// Run reasoning through GLM 5.1 via NVIDIA NIM
     pub async fn reason(&self, system_prompt: &str, user_query: &str) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!("{}/chat/completions", self.base_url);
+        println!("[GLM 5.1] POST {}", url);
+        println!("[GLM 5.1] User query: \"{}\"", user_query);
+        println!("[GLM 5.1] System prompt length: {} chars", system_prompt.len());
 
         let messages = vec![
             Message {
@@ -100,6 +103,9 @@ impl OnlineReasoning {
             }),
         };
 
+        println!("[GLM 5.1] Request model: {}, max_tokens: {}, temp: {}, top_p: {}, seed: {}",
+            request.model, request.max_tokens, request.temperature, request.top_p, request.seed);
+
         let response = self
             .client
             .post(&url)
@@ -110,9 +116,11 @@ impl OnlineReasoning {
             .await?;
 
         let status = response.status();
+        println!("[GLM 5.1] Response status: {}", status);
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
+            println!("[GLM 5.1] ERROR: {}", error_text);
             return Err(format!("GLM API error ({}): {}", status, error_text).into());
         }
 
@@ -123,6 +131,13 @@ impl OnlineReasoning {
             .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
+
+        if let Some(usage) = result.usage {
+            println!("[GLM 5.1] Tokens: {} prompt + {} completion = {} total",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+        }
+        println!("[GLM 5.1] Response: \"{}\"", &content[..content.len().min(200)]);
+        println!("[GLM 5.1] Response length: {} chars", content.len());
 
         Ok(content.trim().to_string())
     }

@@ -58,6 +58,9 @@ impl OnlineStt {
 
     /// Transcribe audio samples (f32, 16kHz mono) using NVIDIA NIM Parakeet
     pub async fn transcribe(&self, audio_samples: &[f32]) -> Result<String, Box<dyn std::error::Error>> {
+        let duration_ms = (audio_samples.len() as f64 / SAMPLE_RATE as f64) * 1000.0;
+        println!("[Parakeet STT] Transcribing {:.0}ms of audio ({} samples)", duration_ms, audio_samples.len());
+
         // Convert f32 samples to 16-bit PCM bytes
         let pcm_bytes: Vec<u8> = audio_samples
             .iter()
@@ -69,6 +72,7 @@ impl OnlineStt {
 
         // Base64 encode
         let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pcm_bytes);
+        println!("[Parakeet STT] Audio encoded to {} bytes base64", audio_b64.len());
 
         let request = ParakeetRequest {
             audio: audio_b64,
@@ -78,6 +82,8 @@ impl OnlineStt {
         };
 
         let url = format!("{}/audio/transcriptions", self.base_url);
+        println!("[Parakeet STT] POST {}", url);
+        println!("[Parakeet STT] Model: {}, Language: en", request.model);
 
         let response = self
             .client
@@ -89,6 +95,7 @@ impl OnlineStt {
             .await?;
 
         let status = response.status();
+        println!("[Parakeet STT] Response status: {}", status);
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -97,10 +104,12 @@ impl OnlineStt {
             } else {
                 error_text
             };
+            println!("[Parakeet STT] ERROR: {}", error_msg);
             return Err(format!("Parakeet API error ({}): {}", status, error_msg).into());
         }
 
         let result: ParakeetResponse = response.json().await?;
+        println!("[Parakeet STT] Transcription: \"{}\" (lang: {:?}, duration: {:?})", result.text, result.language, result.duration);
         Ok(result.text.trim().to_string())
     }
 }
