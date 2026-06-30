@@ -54,7 +54,7 @@ impl OnlineStt {
             .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
 
         let base_url = env::var("NVIDIA_NIM_PARAKEET_BASE_URL")
-            .unwrap_or_else(|_| "https://ai.api.nvidia.com/v1/cv/nvidia/parakeet-tdt-0.6b-v2".to_string());
+            .unwrap_or_else(|_| "https://api.nvcf.nvidia.com/v2/nvcf/pexec/functions/d3fe9151-442b-4204-a70d-5fcc597fd610".to_string());
 
         Ok(Self {
             client: Client::new(),
@@ -112,28 +112,17 @@ impl OnlineStt {
         let wav_bytes = self.build_wav(audio_samples);
         println!("[Parakeet STT] WAV file size: {} bytes", wav_bytes.len());
 
-        // Base64 encode the WAV
-        let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_bytes);
-        println!("[Parakeet STT] Audio encoded to {} bytes base64", audio_b64.len());
-
-        let request = ParakeetRequest {
-            input: AudioInput {
-                audio: audio_b64,
-                source_lang: "en".to_string(),
-                sample_rate: SAMPLE_RATE,
-            },
-        };
-
-        let url = format!("{}/runsync", self.base_url);
-        println!("[Parakeet STT] POST {}", url);
-        println!("[Parakeet STT] Params: lang=en, rate={}Hz", request.input.sample_rate);
+        // Try NVCF REST API with WAV binary upload (Riva ASR format)
+        let url = self.base_url.clone(); // NVCF function endpoint
+        println!("[Parakeet STT] POST {} (audio/wav)", url);
 
         let response = self
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
+            .header("Content-Type", "audio/x-wav")
+            .header("Accept", "application/json")
+            .body(wav_bytes.clone())
             .send()
             .await?;
 
@@ -142,14 +131,39 @@ impl OnlineStt {
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            let err_detail = if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
-                err.to_string()
-            } else {
-                let snippet = if error_text.len() > 200 { &error_text[..200] } else { &error_text };
-                snippet.to_string()
-            };
-            println!("[Parakeet STT] ERROR: {} (body: {})", status, err_detail);
-            return Err(format!("Parakeet API error ({}): {}", status, err_detail).into());
+            let snippet = if error_text.len() > 300 { &error_text[..300] } else { &error_text };
+            println!("[Parakeet STT] ERROR: {} (body: {})", status, snippet);
+
+            // If binary upload failed, try JSON wrapper format
+            if status.as_u16() == 404 || status.as_u16() == 400 || status.as_u16() == 415 {
+                println!("[Parakeet STT] Retrying with JSON wrapper...");
+                let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_bytes);
+                let request = ParakeetRequest {
+                    input: AudioInput {
+                        audio: audio_b64,
+                        source_lang: "en".to_string(),
+                        sample_rate: SAMPLE_RATE,
+                    },
+                };
+
+                println!("[Parakeet STT] POST {} (JSON wrapper)", url);
+                let response2 = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .json(&request)
+                    .send()
+                    .await?;
+
+                let status2 = response2.status();
+                println!("[Parakeet STT] Retry status: {}", status2);
+                let error_text2 = response2.text().await.unwrap_or_default();
+                let snippet2 = if error_text2.len() > 300 { &error_text2[..300] } else { &error_text2 };
+                println!("[Parakeet STT] Retry body: {}", snippet2);
+            }
+
+            return Err(format!("Parakeet API error ({}): {}", status, snippet).into());
         }
 
         let result = response.text().await?;
@@ -160,7 +174,6 @@ impl OnlineStt {
             println!("[Parakeet STT] Transcription: \"{}\"", parsed.text);
             Ok(parsed.text.trim().to_string())
         } else {
-            // Some endpoints return plain text
             println!("[Parakeet STT] Raw text: {}", result.trim());
             Ok(result.trim().to_string())
         }
