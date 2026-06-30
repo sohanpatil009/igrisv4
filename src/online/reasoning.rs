@@ -197,11 +197,15 @@ pub fn parse_tool_call(output: &str) -> Option<(&'static str, &'static str)> {
     let tool = extract_json_string_field(json_str, "tool")?;
 
     // Try "args" (GLM 5.1) then "arguments" (local LLM)
-    let args_field = json_str.find("\"args\"")
-        .or_else(|| json_str.find("\"arguments\""))?;
-    let args_brace = json_str[args_field..].find('{')? + args_field;
-    let args_end = json_str[args_field..].rfind('}')? + args_field;
-    let args = json_str[args_brace..=args_end].to_string();
+    let args = if let Some(args_field) = json_str.find("\"args\"")
+        .or_else(|| json_str.find("\"arguments\""))
+    {
+        let args_brace = json_str[args_field..].find('{')? + args_field;
+        let args_end = json_str[args_field..].rfind('}')? + args_field;
+        json_str[args_brace..=args_end].to_string()
+    } else {
+        "{}".to_string()
+    };
 
     Some((Box::leak(tool.into_boxed_str()), Box::leak(args.into_boxed_str())))
 }
