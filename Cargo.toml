@@ -55,6 +55,9 @@ console = { version = "0.16", features = ["std"] }
 # Online mode (NVIDIA NIM APIs)
 base64 = "0.22"
 dotenv = "0.15"
+tonic = { version = "0.12", features = ["tls", "tls-roots"] }
+prost = "0.13"
+prost-types = "0.13"
 
 # FastSwap dependencies
 axum = "0.7"
@@ -94,6 +97,7 @@ quickcheck_macros = "1.0"
 
 [build-dependencies]
 embed-resource = "1.8"
+tonic-build = "0.12"
 
 [profile.release]
 opt-level = 3

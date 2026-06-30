@@ -1,13 +1,16 @@
 use std::path::Path;
 
-fn main() {
-    // Tell cargo to rerun this script if icon files change
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=icons/");
     println!("cargo:rerun-if-changed=assets/");
     println!("cargo:rerun-if-changed=igrisv3.rc");
     println!("cargo:rerun-if-changed=igrisv3.exe.manifest");
+    println!("cargo:rerun-if-changed=proto/");
 
-    // For Windows, embed the icon resource (which now includes manifest)
+    tonic_build::configure()
+        .build_server(false)
+        .compile_protos(&["proto/riva/proto/riva_asr.proto"], &["proto/"])?;
+
     #[cfg(target_os = "windows")]
     {
         let rc_path = Path::new("igrisv3.rc");
@@ -16,7 +19,6 @@ fn main() {
         }
     }
 
-    // For other platforms, just ensure the icon exists
     #[cfg(not(target_os = "windows"))]
     {
         #[cfg(target_os = "macos")]
@@ -26,7 +28,7 @@ fn main() {
                 println!("cargo:rustc-env=ICON_PATH={}", icns_icon.display());
             }
         }
-        
+
         #[cfg(not(target_os = "macos"))]
         {
             let svg_icon = Path::new("icons/igris_icon.svg");
@@ -35,4 +37,6 @@ fn main() {
             }
         }
     }
+
+    Ok(())
 }
