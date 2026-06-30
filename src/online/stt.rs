@@ -15,23 +15,44 @@ pub struct OnlineStt {
 
 #[derive(Serialize)]
 struct ParakeetRequest {
-    input: AudioInput,
+    audio: AudioData,
+    config: RecognitionConfig,
 }
 
 #[derive(Serialize)]
-struct AudioInput {
-    audio: String, // base64 encoded WAV audio
-    source_lang: String,
-    sample_rate: u32,
+struct AudioData {
+    content: String, // base64 encoded WAV audio
+}
+
+#[derive(Serialize)]
+struct RecognitionConfig {
+    language_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    encoding: String,
+    sample_rate_hertz: u32,
+    audio_channel_count: u32,
+    enable_automatic_punctuation: bool,
 }
 
 #[derive(Deserialize, Debug)]
 struct ParakeetResponse {
+    #[serde(default)]
     text: String,
     #[serde(default)]
-    language: Option<String>,
+    results: Vec<RecognitionResult>,
+}
+
+#[derive(Deserialize, Debug)]
+struct RecognitionResult {
     #[serde(default)]
-    duration: Option<f32>,
+    alternatives: Vec<RecognitionAlternative>,
+}
+
+#[derive(Deserialize, Debug)]
+struct RecognitionAlternative {
+    #[serde(default)]
+    transcript: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -112,17 +133,37 @@ impl OnlineStt {
         let wav_bytes = self.build_wav(audio_samples);
         println!("[Parakeet STT] WAV file size: {} bytes", wav_bytes.len());
 
-        // Try NVCF REST API with WAV binary upload (Riva ASR format)
-        let url = self.base_url.clone(); // NVCF function endpoint
-        println!("[Parakeet STT] POST {} (audio/wav)", url);
+        let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_bytes);
+        println!("[Parakeet STT] Base64 encoded: {} bytes", audio_b64.len());
+
+        // Send as Riva ASR REST JSON format
+        let url = self.base_url.clone();
+        let request = ParakeetRequest {
+            audio: AudioData {
+                content: audio_b64,
+            },
+            config: RecognitionConfig {
+                language_code: "en-US".to_string(),
+                model: Some("parakeet-tdt-0.6b-v2".to_string()),
+                encoding: "LINEAR16_PCM".to_string(),
+                sample_rate_hertz: SAMPLE_RATE,
+                audio_channel_count: 1,
+                enable_automatic_punctuation: true,
+            },
+        };
+
+        println!("[Parakeet STT] POST {} (Riva REST JSON)", url);
+        println!("[Parakeet STT] Config: lang={}, model={}, rate={}Hz",
+            request.config.language_code,
+            request.config.model.as_deref().unwrap_or("default"),
+            request.config.sample_rate_hertz);
 
         let response = self
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "audio/x-wav")
-            .header("Accept", "application/json")
-            .body(wav_bytes.clone())
+            .header("Content-Type", "application/json")
+            .json(&request)
             .send()
             .await?;
 
@@ -131,51 +172,36 @@ impl OnlineStt {
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            let snippet = if error_text.len() > 300 { &error_text[..300] } else { &error_text };
+            let snippet = if error_text.len() > 500 { &error_text[..500] } else { &error_text };
             println!("[Parakeet STT] ERROR: {} (body: {})", status, snippet);
-
-            // If binary upload failed, try JSON wrapper format
-            if status.as_u16() == 404 || status.as_u16() == 400 || status.as_u16() == 415 {
-                println!("[Parakeet STT] Retrying with JSON wrapper...");
-                let audio_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &wav_bytes);
-                let request = ParakeetRequest {
-                    input: AudioInput {
-                        audio: audio_b64,
-                        source_lang: "en".to_string(),
-                        sample_rate: SAMPLE_RATE,
-                    },
-                };
-
-                println!("[Parakeet STT] POST {} (JSON wrapper)", url);
-                let response2 = self
-                    .client
-                    .post(&url)
-                    .header("Authorization", format!("Bearer {}", self.api_key))
-                    .header("Content-Type", "application/json")
-                    .json(&request)
-                    .send()
-                    .await?;
-
-                let status2 = response2.status();
-                println!("[Parakeet STT] Retry status: {}", status2);
-                let error_text2 = response2.text().await.unwrap_or_default();
-                let snippet2 = if error_text2.len() > 300 { &error_text2[..300] } else { &error_text2 };
-                println!("[Parakeet STT] Retry body: {}", snippet2);
-            }
-
             return Err(format!("Parakeet API error ({}): {}", status, snippet).into());
         }
 
         let result = response.text().await?;
-        println!("[Parakeet STT] Raw response: {}", &result[..result.len().min(300)]);
+        println!("[Parakeet STT] Raw response: {}", &result[..result.len().min(500)]);
 
-        // Try to parse as JSON, or return raw text
+        // Parse Riva response format
         if let Ok(parsed) = serde_json::from_str::<ParakeetResponse>(&result) {
-            println!("[Parakeet STT] Transcription: \"{}\"", parsed.text);
-            Ok(parsed.text.trim().to_string())
+            if !parsed.text.is_empty() {
+                println!("[Parakeet STT] Transcription: \"{}\"", parsed.text.trim());
+                return Ok(parsed.text.trim().to_string());
+            }
+            if let Some(result) = parsed.results.first() {
+                if let Some(alt) = result.alternatives.first() {
+                    println!("[Parakeet STT] Transcription: \"{}\"", alt.transcript.trim());
+                    return Ok(alt.transcript.trim().to_string());
+                }
+            }
+        }
+
+        // Try parsing as plain text
+        let trimmed = result.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') {
+            println!("[Parakeet STT] Plain text: {}", trimmed);
+            Ok(trimmed.to_string())
         } else {
-            println!("[Parakeet STT] Raw text: {}", result.trim());
-            Ok(result.trim().to_string())
+            println!("[Parakeet STT] Could not parse response: {}", trimmed);
+            Ok(trimmed.to_string())
         }
     }
 }
