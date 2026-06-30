@@ -9,6 +9,7 @@ pub struct OnlineReasoning {
     client: Client,
     api_key: String,
     base_url: String,
+    model: String,
 }
 
 #[derive(Serialize)]
@@ -61,8 +62,11 @@ impl OnlineReasoning {
         let api_key = env::var("NVIDIA_API_KEY")
             .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
 
-        let base_url = env::var("NVIDIA_NIM_GLM_BASE_URL")
+        let base_url = env::var("NVIDIA_NIM_BASE_URL")
             .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string());
+
+        let model = env::var("NVIDIA_NIM_MODEL")
+            .unwrap_or_else(|_| "meta/llama-3.1-8b-instruct".to_string());
 
         Ok(Self {
             client: Client::builder()
@@ -70,15 +74,16 @@ impl OnlineReasoning {
                 .build()?,
             api_key,
             base_url,
+            model,
         })
     }
 
-    /// Run reasoning through GLM 5.1 via NVIDIA NIM
+    /// Run reasoning through NVIDIA NIM (OpenAI-compatible chat completions)
     pub async fn reason(&self, system_prompt: &str, user_query: &str) -> Result<String, Box<dyn std::error::Error>> {
         let url = format!("{}/chat/completions", self.base_url);
-        println!("[GLM 5.1] POST {}", url);
-        println!("[GLM 5.1] User query: \"{}\"", user_query);
-        println!("[GLM 5.1] System prompt length: {} chars", system_prompt.len());
+        println!("[NIM] POST {}", url);
+        println!("[NIM] Model: {} | User query: \"{}\"", self.model, user_query);
+        println!("[NIM] System prompt length: {} chars", system_prompt.len());
 
         let messages = vec![
             Message {
@@ -91,21 +96,27 @@ impl OnlineReasoning {
             },
         ];
 
+        let chat_template_kwargs = if self.model.contains("glm") {
+            Some(ChatTemplateKwargs {
+                enable_thinking: true,
+                clear_thinking: false,
+            })
+        } else {
+            None
+        };
+
         let request = ChatRequest {
-            model: "z-ai/glm-5.1".to_string(),
+            model: self.model.clone(),
             messages,
             temperature: 1.0,
             top_p: 1.0,
             max_tokens: 16384,
             seed: 42,
             stream: false,
-            chat_template_kwargs: Some(ChatTemplateKwargs {
-                enable_thinking: true,
-                clear_thinking: false,
-            }),
+            chat_template_kwargs,
         };
 
-        println!("[GLM 5.1] Request model: {}, max_tokens: {}, temp: {}, top_p: {}, seed: {}",
+        println!("[NIM] Request: model={}, max_tokens={}, temp={}, top_p={}, seed={}",
             request.model, request.max_tokens, request.temperature, request.top_p, request.seed);
 
         let response = self
@@ -118,12 +129,12 @@ impl OnlineReasoning {
             .await?;
 
         let status = response.status();
-        println!("[GLM 5.1] Response status: {}", status);
+        println!("[NIM] Response status: {}", status);
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            println!("[GLM 5.1] ERROR: {}", error_text);
-            return Err(format!("GLM API error ({}): {}", status, error_text).into());
+            println!("[NIM] ERROR: {}", error_text);
+            return Err(format!("NIM API error ({}): {}", status, error_text).into());
         }
 
         let result: ChatResponse = response.json().await?;
@@ -135,11 +146,11 @@ impl OnlineReasoning {
             .unwrap_or_default();
 
         if let Some(usage) = result.usage {
-            println!("[GLM 5.1] Tokens: {} prompt + {} completion = {} total",
+            println!("[NIM] Tokens: {} prompt + {} completion = {} total",
                 usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
         }
-        println!("[GLM 5.1] Response: \"{}\"", &content[..content.len().min(200)]);
-        println!("[GLM 5.1] Response length: {} chars", content.len());
+        println!("[NIM] Response: \"{}\"", &content[..content.len().min(200)]);
+        println!("[NIM] Response length: {} chars", content.len());
 
         Ok(content.trim().to_string())
     }
@@ -147,7 +158,7 @@ impl OnlineReasoning {
 
 impl Default for OnlineReasoning {
     fn default() -> Self {
-        Self::new().expect("Failed to create OnlineReasoning - check API key in .env")
+        Self::new().expect("Failed to create OnlineReasoning - check NVIDIA_API_KEY in .env")
     }
 }
 

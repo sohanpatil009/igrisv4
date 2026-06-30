@@ -152,7 +152,7 @@ async fn run_setup_and_assistant() {
     let _ = dotenv::dotenv();
     online::init_from_env();
     if online::is_online_mode() {
-        println!("[ONLINE] Online mode enabled (NVIDIA NIM: Parakeet STT + GLM 5.1)");
+        println!("[ONLINE] Online mode enabled (NVIDIA NIM: Parakeet STT + NIM chat)");
     } else {
         println!("[OFFLINE] Using local models. Say 'switch to online mode' to enable cloud APIs.");
     }
@@ -1018,8 +1018,8 @@ async fn process_voice_command(
 
     // Try reasoning: Online NIM (GLM 5.1) or local LLM (if available)
     if online::is_online_mode() {
-        println!("[Online] Reasoning via NVIDIA NIM GLM 5.1...");
-        add_log("[Online] Reasoning via NVIDIA NIM GLM 5.1...", LogLevel::Info);
+        println!("[Online] Reasoning via NVIDIA NIM...");
+        add_log("[Online] Reasoning via NVIDIA NIM...", LogLevel::Info);
         match online::reason_online(&online::reasoning::online_tool_system_prompt(), command_to_use).await {
             Ok(output) => {
                 println!("[Online] Raw output: {}", &output[..output.len().min(200)]);
@@ -1044,8 +1044,8 @@ async fn process_voice_command(
                 }
             }
             Err(e) => {
-                println!("[Online] GLM error ({}), trying local fallback", e);
-                add_log(&format!("[Online] GLM error ({}), trying local fallback", e), LogLevel::Warning);
+                println!("[Online] NIM error ({}), trying local fallback", e);
+                add_log(&format!("[Online] NIM error ({}), trying local fallback", e), LogLevel::Warning);
             }
         }
     }
