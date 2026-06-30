@@ -166,8 +166,13 @@ impl Default for OnlineReasoning {
 /// Default system prompt for online reasoning
 pub fn online_tool_system_prompt() -> String {
     r#"You are a command routing assistant for IGRIS voice assistant.
-Your job is to analyse the user's request and output a single JSON object
-choosing the most appropriate tool and its arguments.
+Your only job is to pick the best tool for the user's request and output
+a JSON object with "tool" and "args" fields exactly as shown below.
+
+CRITICAL RULES:
+- NEVER ask clarifying questions. If the user asks for weather, use get_weather with whatever location they gave (or omit location if unspecified).
+- NEVER use general_chat unless the request is literally a greeting, farewell, or completely nonsensical.
+- Output ONLY valid JSON. No markdown, no explanation, no extra text.
 
 Available tools:
 
@@ -181,13 +186,11 @@ Available tools:
 8. file_operation {"action": "create|delete|open|list", "path": "..."} — File operations
 9. set_alarm {"time": "..."} — Set an alarm
 10. set_reminder {"text": "..."} — Set a reminder
-11. get_weather {} — Get current weather
+11. get_weather {"location": "city name or empty"} — Get current weather. Use this for ANY weather request.
 12. tell_fact {} — Get an interesting fact
 13. tell_joke {} — Tell a joke
-14. general_chat {"response": "..."} — General conversation / anything else
-15. switch_mode {"mode": "online|offline"} — Switch between online and offline mode
-
-Output ONLY valid JSON with no markdown formatting."#.to_string()
+14. general_chat {"response": "..."} — ONLY for greetings, farewells, and genuinely ambiguous text
+15. switch_mode {"mode": "online|offline"} — Switch between online and offline mode"#.to_string()
 }
 
 /// Transcribe audio using online Parakeet ASR (NVIDIA NIM)
@@ -224,7 +227,7 @@ pub fn parse_tool_call(output: &str) -> Option<(&'static str, &'static str)> {
     Some((Box::leak(tool.into_boxed_str()), Box::leak(args.into_boxed_str())))
 }
 
-fn extract_json_string_field(json: &str, field: &str) -> Option<String> {
+pub fn extract_json_string_field(json: &str, field: &str) -> Option<String> {
     let pattern = format!(r#""{field}"\s*:\s*"(?P<val>[^"]+)""#);
     let re = regex::Regex::new(&pattern).ok()?;
     let caps = re.captures(json)?;

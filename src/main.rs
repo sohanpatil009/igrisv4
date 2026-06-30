@@ -30,7 +30,7 @@ use core::tts::TTS_ENGINE;
 use core::wake_word::listen_for_wake_word;
 #[cfg(feature = "candle")]
 use core::local_llm::{is_local_llm_ready, global_reason, default_tool_system_prompt};
-use online::reasoning::parse_tool_call;
+use online::reasoning::{extract_json_string_field, parse_tool_call};
 use config::CONFIG;
 use ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup};
 
@@ -1839,7 +1839,14 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
             response
         }
         "get_weather" => {
-            let response = commands::web::search_and_read_results("weather today")
+            let location = extract_json_string_field(_args, "location").unwrap_or_default();
+            let query = if location.is_empty() {
+                "current weather".to_string()
+            } else {
+                format!("current weather in {}", location)
+            };
+            add_log(&format!("[Weather] Searching: {}", query), LogLevel::Info);
+            let response = commands::web::search_and_read_results(&query)
                 .unwrap_or_else(|| "Weather lookup failed.".to_string());
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
