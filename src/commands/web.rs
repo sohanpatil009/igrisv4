@@ -292,13 +292,15 @@ pub fn is_search_command(command: &str) -> bool {
 
 /// Fetch search results from Google and extract featured snippet
 fn http_client() -> &'static reqwest::blocking::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to create HTTP client")
+    static CLIENT: std::sync::OnceLock<&reqwest::blocking::Client> = std::sync::OnceLock::new();
+    *CLIENT.get_or_init(|| {
+        Box::leak(Box::new(
+            reqwest::blocking::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .expect("Failed to create HTTP client")
+        ))
     })
 }
 
