@@ -338,18 +338,20 @@ impl PluginManager {
             }
         }
         
-        // Pass 5: Fuzzy match - ALL trigger words must match
+        // Pass 5: Fuzzy match - ALL trigger words must match (word-boundary, min length 2)
         for plugin in &enabled_plugins {
             for command in &plugin.commands {
                 let trigger_lower = command.trigger.to_lowercase();
-                let trigger_words: Vec<&str> = trigger_lower.split_whitespace().collect();
+                let trigger_words: Vec<&str> = trigger_lower.split_whitespace()
+                    .filter(|w| w.len() >= 2)
+                    .collect();
                 
                 if trigger_words.is_empty() {
                     continue;
                 }
                 
                 let all_match = trigger_words.iter().all(|tw| {
-                    input_words.iter().any(|iw| iw.contains(tw) || tw.contains(iw))
+                    input_words.iter().any(|iw| iw.len() >= 2 && iw == tw)
                 });
                 
                 if all_match {

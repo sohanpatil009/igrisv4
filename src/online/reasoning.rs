@@ -189,8 +189,10 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
         RULES:\n\
         - NEVER ask clarifying questions. If a request is ambiguous, use your best judgment and pick the most likely tool.\n\
         - Be concise in conversation. Short, natural responses.\n\
-        - Use general_chat for greetings, farewells, casual conversation, compliments, thank yous, and any non-actionable chat.\n\
-        - For weather queries, ALWAYS use get_weather — never search_web.\n\
+        - Use general_chat ONLY for pure greetings, farewells, compliments, thank yous, and chit-chat that has no actionable intent.\n\
+        - For weather queries, ALWAYS use get_weather — never search_web and never general_chat.\n\
+        - For jokes, ALWAYS use tell_joke — never general_chat or search_web.\n\
+        - For facts, ALWAYS use tell_fact — never general_chat or search_web.\n\
         - For questions about facts, news, or information, use search_web.\n\
         - Output ONLY valid JSON. No markdown, no explanation, no extra text.\n\
         \n\

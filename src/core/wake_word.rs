@@ -3,7 +3,7 @@ use crate::core::audio_capture::{capture_audio_vad, CaptureConfig, CaptureMode};
 use crate::core::stt::{transcribe_audio, SttEngine};
 use std::sync::atomic::Ordering;
 
-/// Listen for wake word with minimal output
+/// Listen for wake word with minimal output (offline mode, sync)
 pub fn listen_for_wake_word(
     stt: &SttEngine,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -38,6 +38,56 @@ pub fn listen_for_wake_word(
 
         let transcription_lower = transcription.to_lowercase();
         
+        if contains_wake_word(&transcription_lower, wake_word) {
+            println!("✅ Wake word detected: \"{}\"", transcription);
+            return Ok(());
+        }
+
+        if transcription_lower.len() > 2 {
+            println!("❌ Wake word not detected. Heard: \"{}\"", transcription_lower);
+        }
+    }
+}
+
+/// Listen for wake word with an async transcriber (used in online mode).
+/// The `transcriber` closure receives raw audio samples and returns transcribed text.
+pub async fn listen_for_wake_word_async<F, Fut>(
+    transcriber: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&[f32]) -> Fut,
+    Fut: std::future::Future<Output = Result<String, Box<dyn std::error::Error>>>,
+{
+    let wake_word = "hello";
+
+    loop {
+        if crate::RESET_FLAG.swap(false, Ordering::Relaxed) {
+            return Err("Reset by hotkey".into());
+        }
+
+        let capture_config = CaptureConfig {
+            mode: CaptureMode::WakeWord,
+            max_wait_ms: 10000,
+            debug: false,
+        };
+
+        let result = capture_audio_vad(capture_config)?;
+
+        if !result.speech_detected || result.samples.is_empty() {
+            continue;
+        }
+
+        let transcription = match transcriber(&result.samples).await {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+
+        if transcription.trim().is_empty() {
+            continue;
+        }
+
+        let transcription_lower = transcription.to_lowercase();
+
         if contains_wake_word(&transcription_lower, wake_word) {
             println!("✅ Wake word detected: \"{}\"", transcription);
             return Ok(());

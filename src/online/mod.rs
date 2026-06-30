@@ -4,6 +4,7 @@ pub mod reasoning;
 pub mod stt;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 static ONLINE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -50,6 +51,21 @@ pub fn init_from_env() {
             println!("[Online] IGRIS_ONLINE_MODE not set — staying offline");
         }
     }
+}
+
+/// Check if the device has internet connectivity by trying to connect
+/// to several well-known hosts with a short timeout.
+pub async fn check_internet_connectivity() -> bool {
+    let hosts = ["1.1.1.1:443", "8.8.8.8:443", "google.com:443"];
+    for host in &hosts {
+        if tokio::time::timeout(Duration::from_secs(3), tokio::net::TcpStream::connect(host))
+            .await
+            .is_ok()
+        {
+            return true;
+        }
+    }
+    false
 }
 
 pub use reasoning::{reason_online, OnlineReasoning};

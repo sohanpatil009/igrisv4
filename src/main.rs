@@ -22,12 +22,12 @@ use setup_manager::gui::{is_setup_complete, SetupGui};
 use setup_manager::{SetupManager, SetupUI};
 use utils::shared_memory::init_shared_memory;
 use commands::app_utils::list_running_apps;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use core::stt::{init_stt_engine, SttEngine, transcribe_audio, hybrid_transcribe_audio};
 use core::tts::TTS_ENGINE;
-use core::wake_word::listen_for_wake_word;
+use core::wake_word::{listen_for_wake_word, listen_for_wake_word_async};
 #[cfg(feature = "candle")]
 use core::local_llm::{is_local_llm_ready, global_reason, default_tool_system_prompt};
 use online::reasoning::{extract_json_string_field, parse_tool_call};
@@ -38,7 +38,12 @@ use ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, Camera
 static ASSISTANT_STATE: once_cell::sync::Lazy<Arc<Mutex<AssistantState>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(AssistantState::default())));
 
+// Tracks whether the offline NLU engine has been initialized (used for on-demand init
+// when switching from online to offline mode at runtime)
+static NLU_READY: AtomicBool = AtomicBool::new(false);
 
+// Counts consecutive online reasoning failures. After 3, auto-switches to offline mode.
+static ONLINE_FAIL_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 // Global UI state for voice-triggered panels
 static UI_PANEL_STATE: once_cell::sync::Lazy<Arc<Mutex<UiPanelState>>> =
@@ -150,11 +155,26 @@ async fn run_setup_and_assistant() {
 
     // Load .env file for API keys (online mode)
     let _ = dotenv::dotenv();
-    online::init_from_env();
-    if online::is_online_mode() {
-        println!("[ONLINE] Online mode enabled (NVIDIA NIM: Parakeet STT + NIM chat)");
+
+    // First, check internet connectivity before deciding which mode to use
+    println!("[NET] Checking internet connectivity...");
+    let has_internet = online::check_internet_connectivity().await;
+
+    if has_internet {
+        let has_api_key = std::env::var("NVIDIA_API_KEY").is_ok();
+        if has_api_key {
+            println!("[NET] Internet OK + NVIDIA_API_KEY found — auto-enabling online mode");
+            online::enable_online_mode();
+            println!("[ONLINE] Online mode active (NVIDIA NIM: Parakeet STT + NIM chat)");
+            println!("[ONLINE] Offline STT loaded for wake word; SBERT NLU & local LLM skipped");
+            println!("[ONLINE] Will auto-switch to offline if internet lost or online API fails");
+        } else {
+            println!("[NET] Internet OK but no NVIDIA_API_KEY set — staying offline");
+            println!("[OFFLINE] Set NVIDIA_API_KEY in .env and restart for online mode");
+        }
     } else {
-        println!("[OFFLINE] Using local models. Say 'switch to online mode' to enable cloud APIs.");
+        println!("[NET] No internet — staying offline with local models");
+        println!("[OFFLINE] Models: Whisper STT + SBERT NLU + Piper TTS");
     }
 
     // Initialize shared memory thread pools for faster response
@@ -281,17 +301,22 @@ async fn start_voice_assistant() {
     update_status("Initializing...");
     add_log("Starting speech recognition engine...", LogLevel::Info);
 
-    // Initialize NLU engine with SBERT semantic understanding
-    add_log("Initializing NLU engine with SBERT...", LogLevel::Info);
-    if let Err(e) = GLOBAL_NLU.initialize() {
-        add_log(&format!("NLU initialization warning: {}", e), LogLevel::Warning);
-        add_log("Falling back to basic command matching", LogLevel::Info);
-    } else {
-        if GLOBAL_NLU.is_sbert_enabled() {
-            add_log("SBERT semantic engine active - enhanced understanding enabled", LogLevel::Success);
+    // Skip offline NLU init when in online mode (loaded on-demand if needed)
+    if !online::is_online_mode() {
+        add_log("Initializing NLU engine with SBERT...", LogLevel::Info);
+        if let Err(e) = GLOBAL_NLU.initialize() {
+            add_log(&format!("NLU initialization warning: {}", e), LogLevel::Warning);
+            add_log("Falling back to basic command matching", LogLevel::Info);
         } else {
-            add_log("NLU engine ready (keyword mode)", LogLevel::Success);
+            NLU_READY.store(true, Ordering::Relaxed);
+            if GLOBAL_NLU.is_sbert_enabled() {
+                add_log("SBERT semantic engine active - enhanced understanding enabled", LogLevel::Success);
+            } else {
+                add_log("NLU engine ready (keyword mode)", LogLevel::Success);
+            }
         }
+    } else {
+        add_log("[Online Mode] Skipping offline NLU initialization (will init on-demand if needed)", LogLevel::Info);
     }
 
     // Initialize optimized TTS engine for low latency
@@ -324,7 +349,7 @@ async fn start_voice_assistant() {
     add_log("FastSwap ready (starts on demand)", LogLevel::Info);
 
     #[cfg(feature = "candle")]
-    {
+    if !online::is_online_mode() {
         let llm_model_path = "pkg/models/qwen2.5-1.5b-instruct-q4_k_m.gguf";
         if std::path::Path::new(llm_model_path).exists() {
             match core::local_llm::init_local_llm(llm_model_path) {
@@ -335,36 +360,78 @@ async fn start_voice_assistant() {
             add_log("Local LLM model not found — download via setup to enable smart reasoning", LogLevel::Info);
         }
     }
+    // In online mode, skip loading the 940MB SenseVoice model — Parakeet handles everything
+    let stt_engine: Option<SttEngine> = if !online::is_online_mode() {
+        match init_stt_engine() {
+            Ok(engine) => {
+                update_status("Initialized - Waiting for wake word");
+                add_log("SenseVoice model loaded successfully", LogLevel::Success);
 
-    let stt_engine = match init_stt_engine() {
-        Ok(engine) => {
-            update_status("Initialized - Waiting for wake word");
-            add_log("SenseVoice model loaded successfully", LogLevel::Success);
+                if let Err(e) = utils::greetings::speak_invoke_greeting() {
+                    add_log(&format!("Greeting error: {}", e), LogLevel::Warning);
+                }
+                add_log("IGRIS greeting spoken", LogLevel::Info);
 
-            // Speak IGRIS greeting on app launch
-            if let Err(e) = utils::greetings::speak_invoke_greeting() {
-                add_log(&format!("Greeting error: {}", e), LogLevel::Warning);
+                {
+                    let mut state = ASSISTANT_STATE.lock().unwrap();
+                    state.is_initialized = true;
+                    state.is_awake = false;
+                    state.setup_in_progress = false;
+                }
+
+                Some(engine)
             }
-            add_log("IGRIS greeting spoken", LogLevel::Info);
-
-            {
-                let mut state = ASSISTANT_STATE.lock().unwrap();
-                state.is_initialized = true;
-                state.is_awake = false;
-                state.setup_in_progress = false;
+            Err(e) => {
+                update_status("Initialization Failed");
+                add_log(&format!("Failed to initialize STT: {}", e), LogLevel::Error);
+                let _ = core::tts::speak(
+                    "Sorry, I failed to initialize. Please check the model files and restart.",
+                );
+                return;
             }
-
-            engine
         }
-        Err(e) => {
-            update_status("Initialization Failed");
-            add_log(&format!("Failed to initialize STT: {}", e), LogLevel::Error);
-            let _ = core::tts::speak(
-                "Sorry, I failed to initialize. Please check the model files and restart.",
-            );
-            return;
+    } else {
+        update_status("Initialized - Waiting for wake word (Online mode)");
+        add_log("[Online Mode] SenseVoice model skipped (940MB) — using Parakeet STT", LogLevel::Success);
+        if let Err(e) = utils::greetings::speak_invoke_greeting() {
+            add_log(&format!("Greeting error: {}", e), LogLevel::Warning);
         }
+        add_log("IGRIS greeting spoken", LogLevel::Info);
+        {
+            let mut state = ASSISTANT_STATE.lock().unwrap();
+            state.is_initialized = true;
+            state.is_awake = false;
+            state.setup_in_progress = false;
+        }
+        None
     };
+
+    // Spawn background internet connectivity monitor (checks every 15s)
+    // Automatically switches between online and offline mode as connectivity changes
+    let _connectivity_handle = tokio::spawn(async {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            interval.tick().await;
+            let online_now = online::is_online_mode();
+            let has_internet = online::check_internet_connectivity().await;
+
+            if online_now && !has_internet {
+                println!("[NET] Internet lost — switching to offline mode");
+                add_log("[NET] Internet disconnected — switching to offline mode", LogLevel::Warning);
+                online::disable_online_mode();
+                let _ = core::tts::speak("Internet connection lost. Switching to offline mode.");
+            } else if !online_now && has_internet {
+                let has_api_key = std::env::var("NVIDIA_API_KEY").is_ok();
+                if has_api_key {
+                    ONLINE_FAIL_COUNT.store(0, Ordering::Relaxed);
+                    println!("[NET] Internet restored — switching to online mode");
+                    add_log("[NET] Internet restored — switching to online mode", LogLevel::Success);
+                    online::enable_online_mode();
+                    let _ = core::tts::speak("Internet connection restored. Switching to online mode.");
+                }
+            }
+        }
+    });
 
     // Main wake word loop
     loop {
@@ -387,7 +454,26 @@ async fn start_voice_assistant() {
 update_status("Sleeping - Say 'hello' to wake me");
 add_log("Listening for wake word 'hello'...", LogLevel::Info);
 
-        match listen_for_wake_word(&stt_engine) {
+        // Use Parakeet STT for wake word in online mode, local SenseVoice otherwise
+        let wake_result = if online::is_online_mode() {
+            listen_for_wake_word_async(|samples| {
+                let owned_samples = samples.to_vec();
+                async move {
+                    online::transcribe_online(&owned_samples)
+                        .await
+                        .map_err(|e| e.into())
+                }
+            })
+            .await
+        } else if let Some(ref engine) = stt_engine {
+            listen_for_wake_word(engine)
+        } else {
+            // Shouldn't happen in offline mode since we load it above, but handle gracefully
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+        };
+
+        match wake_result {
             Ok(_) => {
                 // Check for reset signal right after wake word
                 if RESET_FLAG.swap(false, Ordering::Relaxed) {
@@ -404,7 +490,7 @@ add_log("Listening for wake word 'hello'...", LogLevel::Info);
                 add_log("Wake word detected!", LogLevel::Success);
                 let _ = core::tts::speak("Yes, I'm listening. What can I do for you?");
 
-                match continuous_listening_mode(&stt_engine).await {
+                match continuous_listening_mode(stt_engine.as_ref()).await {
                     Ok(should_exit) => {
                         if should_exit {
                             {
@@ -438,7 +524,7 @@ add_log("Listening for wake word 'hello'...", LogLevel::Info);
 }
 
 async fn continuous_listening_mode(
-    stt_engine: &SttEngine,
+    stt_engine: Option<&SttEngine>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     update_status("Listening Mode");
     add_log("Entering continuous listening mode (VAD-optimized)", LogLevel::Info);
@@ -489,18 +575,18 @@ async fn continuous_listening_mode(
                     text.trim().to_string()
                 }
                 Err(e) => {
-                    add_log(&format!("[Online STT] Failed ({}), falling back to local", e), LogLevel::Warning);
-                    match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
-                        Ok(text) => text.trim().to_string(),
-                        Err(_) => continue,
-                    }
+                    add_log(&format!("[Online STT] Failed ({}), no local fallback available", e), LogLevel::Warning);
+                    continue;
                 }
             }
-        } else {
-            match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
+        } else if let Some(engine) = stt_engine {
+            match hybrid_transcribe_audio(&capture_result.samples, engine).await {
                 Ok(text) => text.trim().to_string(),
                 Err(_) => continue,
             }
+        } else {
+            add_log("[STT] No local STT engine available — skipping", LogLevel::Warning);
+            continue;
         };
 
         if command.is_empty() {
@@ -539,7 +625,7 @@ async fn continuous_listening_mode(
 
 async fn process_voice_command(
     command: &str,
-    _stt_engine: &SttEngine,
+    _stt_engine: Option<&SttEngine>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     // Check for reset signal from hotkey
     if RESET_FLAG.swap(false, Ordering::Relaxed) {
@@ -847,6 +933,17 @@ async fn process_voice_command(
         }
     }
     
+    // On-demand NLU init — needed when switching from online→offline at runtime
+    if !NLU_READY.load(Ordering::Relaxed) && !online::is_online_mode() {
+        add_log("[NLU] Initializing on demand after mode switch...", LogLevel::Info);
+        if GLOBAL_NLU.initialize().is_ok() {
+            NLU_READY.store(true, Ordering::Relaxed);
+            add_log("[NLU] NLU engine ready (on-demand)", LogLevel::Success);
+        } else {
+            add_log("[NLU] On-demand init failed, using basic fallback", LogLevel::Warning);
+        }
+    }
+
     // First, try NLU-based intent recognition
     let nlu_result = GLOBAL_NLU.process_input(command_to_use);
     
@@ -1034,8 +1131,13 @@ async fn process_voice_command(
             lines.join("\n")
         };
 
-        match online::reason_online(&online::reasoning::online_tool_system_prompt(&context_str), command_to_use).await {
-            Ok(output) => {
+        // Timeout for online reasoning: 15s total (API timeout is 60s, but we want
+        // to fall back to local faster if the cloud is slow)
+        let system_prompt = online::reasoning::online_tool_system_prompt(&context_str);
+        let online_fut = online::reason_online(&system_prompt, command_to_use);
+        match tokio::time::timeout(std::time::Duration::from_secs(15), online_fut).await {
+            Ok(Ok(output)) => {
+                ONLINE_FAIL_COUNT.store(0, Ordering::Relaxed);
                 println!("[Online] Raw output: {}", &output[..output.len().min(200)]);
                 add_log(
                     &format!("[Online] Raw output: {}", &output[..output.len().min(120)]),
@@ -1057,9 +1159,29 @@ async fn process_voice_command(
                     return Ok(false);
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 println!("[Online] NIM error ({}), trying local fallback", e);
                 add_log(&format!("[Online] NIM error ({}), trying local fallback", e), LogLevel::Warning);
+                // After 3 consecutive failures, auto-switch to offline mode
+                ONLINE_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
+                if ONLINE_FAIL_COUNT.load(Ordering::Relaxed) >= 3 {
+                    println!("[Online] 3 consecutive failures — auto-switching to offline mode");
+                    add_log("[Online] 3 consecutive failures — auto-switching to offline mode", LogLevel::Warning);
+                    online::disable_online_mode();
+                    let _ = core::tts::speak("Online mode keeps failing. Switching to offline mode.");
+                }
+            }
+            Err(_timeout) => {
+                println!("[Online] NIM timed out after 15s — trying local fallback");
+                add_log("[Online] NIM timed out — trying local fallback", LogLevel::Warning);
+                // Timeouts also count toward the failure threshold
+                ONLINE_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
+                if ONLINE_FAIL_COUNT.load(Ordering::Relaxed) >= 3 {
+                    println!("[Online] 3 consecutive failures — auto-switching to offline mode");
+                    add_log("[Online] 3 consecutive failures — auto-switching to offline mode", LogLevel::Warning);
+                    online::disable_online_mode();
+                    let _ = core::tts::speak("Online mode keeps timing out. Switching to offline mode.");
+                }
             }
         }
     }
@@ -1744,6 +1866,7 @@ fn add_log(message: &str, level: LogLevel) {
 
 /// Route an LLM-discovered tool call to the appropriate command handler.
 async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String {
+    println!("[ToolRouter] LLM called tool: \"{}\" with args: \"{}\"", tool, _args);
     match tool {
         "open_app" => {
             if let Some(plugin_result) = crate::plugins::process_plugin_command(command_to_use) {
