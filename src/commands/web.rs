@@ -461,6 +461,53 @@ pub async fn get_weather_via_api(city: &str) -> Option<String> {
     ))
 }
 
+/// Get a random joke via JokeAPI (free, no API key required)
+pub async fn get_random_joke() -> Option<String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://v2.jokeapi.dev/joke/Any?type=single&safe-mode")
+        .header("User-Agent", "igris-voice-assistant/1.0")
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    #[derive(Deserialize)]
+    struct JokeResponse {
+        joke: Option<String>,
+        error: Option<bool>,
+    }
+
+    let data: JokeResponse = resp.json().await.ok()?;
+    data.joke
+}
+
+/// Get a random fact via Useless Facts API (free, no API key required)
+pub async fn get_random_fact() -> Option<String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://uselessfacts.jsph.pl/api/v2/facts/random?language=en")
+        .header("User-Agent", "igris-voice-assistant/1.0")
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    #[derive(Deserialize)]
+    struct FactResponse {
+        text: String,
+    }
+
+    let data: FactResponse = resp.json().await.ok()?;
+    Some(data.text)
+}
+
 #[derive(Deserialize)]
 struct WttrResponse {
     current_condition: Vec<CurrentCondition>,

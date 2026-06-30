@@ -1869,15 +1869,19 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
             response
         }
         "tell_fact" => {
-            let response = commands::web::search_and_read_results("tell me an interesting fact").await
-                .unwrap_or_else(|| "Search failed.".to_string());
+            let response = commands::web::get_random_fact().await
+                .unwrap_or_else(|| {
+                    "I couldn't find a fact right now.".to_string()
+                });
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response
         }
         "tell_joke" => {
-            let response = commands::web::search_and_read_results("tell me a joke").await
-                .unwrap_or_else(|| "Search failed.".to_string());
+            let response = commands::web::get_random_joke().await
+                .unwrap_or_else(|| {
+                    "I couldn't think of a joke right now.".to_string()
+                });
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response
