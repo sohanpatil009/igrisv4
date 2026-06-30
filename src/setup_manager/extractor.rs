@@ -243,6 +243,14 @@ export CPPFLAGS="-I{llvm_path}/include"
                     self.flatten_directory(&extract_dir)?;
                 }
             }
+            "bz2" => {
+                // Handle .tar.bz2 files (SenseVoice model)
+                fs::create_dir_all(&extract_dir)?;
+                self.extract_tar_bz2(&archive_path, &extract_dir).await?;
+                if task.flatten {
+                    self.flatten_directory(&extract_dir)?;
+                }
+            }
             _ => {
                 // Direct copy for .bin, .onnx, and other files
                 if archive_path.exists() {
@@ -317,6 +325,22 @@ export CPPFLAGS="-I{llvm_path}/include"
     ) -> Result<(), Box<dyn std::error::Error>> {
         std::process::Command::new("tar")
             .arg("-xJf")
+            .arg(archive_path)
+            .arg("-C")
+            .arg(extract_dir)
+            .output()?;
+
+        Ok(())
+    }
+
+    /// Extract tar.bz2 file (SenseVoice model, cross-platform using tar)
+    async fn extract_tar_bz2(
+        &self,
+        archive_path: &PathBuf,
+        extract_dir: &PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        std::process::Command::new("tar")
+            .arg("-xjf")
             .arg(archive_path)
             .arg("-C")
             .arg(extract_dir)
@@ -404,6 +428,12 @@ export CPPFLAGS="-I{llvm_path}/include"
                 archive: "sbert-tokenizer.json".to_string(),
                 extract_to: PathBuf::from("models/sbert/tokenizer.json"),
                 flatten: false,
+            },
+            ExtractTask {
+                name: "SenseVoice Model",
+                archive: "sense-voice.tar.bz2".to_string(),
+                extract_to: PathBuf::from("models/sense-voice"),
+                flatten: true,
             },
             ExtractTask {
                 name: "Voice Model",
