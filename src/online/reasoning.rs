@@ -63,6 +63,7 @@ impl OnlineReasoning {
             .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
 
         let base_url = env::var("NVIDIA_NIM_BASE_URL")
+            .or_else(|_| env::var("NVIDIA_NIM_GLM_BASE_URL"))
             .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string());
 
         let model = env::var("NVIDIA_NIM_MODEL")
