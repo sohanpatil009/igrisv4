@@ -75,7 +75,7 @@ impl OnlineStt {
             .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
 
         let base_url = env::var("NVIDIA_NIM_PARAKEET_BASE_URL")
-            .unwrap_or_else(|_| "https://api.nvcf.nvidia.com/v2/nvcf/pexec/functions/d3fe9151-442b-4204-a70d-5fcc597fd610".to_string());
+            .unwrap_or_else(|_| "https://d3fe9151-442b-4204-a70d-5fcc597fd610.invocation.api.nvcf.nvidia.com".to_string());
 
         Ok(Self {
             client: Client::new(),
@@ -137,7 +137,7 @@ impl OnlineStt {
         println!("[Parakeet STT] Base64 encoded: {} bytes", audio_b64.len());
 
         // Send as Riva ASR REST JSON format
-        let url = self.base_url.clone();
+        let url = format!("{}/v1/offlineRecognize", self.base_url);
         let request = ParakeetRequest {
             audio: AudioData {
                 content: audio_b64,
