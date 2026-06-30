@@ -1016,11 +1016,25 @@ async fn process_voice_command(
         }
     }
 
-    // Try reasoning: Online NIM (GLM 5.1) or local LLM (if available)
+    // Try reasoning: Online NIM or local LLM
     if online::is_online_mode() {
         println!("[Online] Reasoning via NVIDIA NIM...");
         add_log("[Online] Reasoning via NVIDIA NIM...", LogLevel::Info);
-        match online::reason_online(&online::reasoning::online_tool_system_prompt(), command_to_use).await {
+
+        // Build conversation context from recent turns
+        let recent_turns = nlu::context::get_recent_context(3);
+        let context_str = if recent_turns.is_empty() {
+            String::new()
+        } else {
+            let mut lines = Vec::new();
+            for turn in &recent_turns {
+                lines.push(format!("User: {}", turn.user_input));
+                lines.push(format!("You: {}", turn.assistant_response));
+            }
+            lines.join("\n")
+        };
+
+        match online::reason_online(&online::reasoning::online_tool_system_prompt(&context_str), command_to_use).await {
             Ok(output) => {
                 println!("[Online] Raw output: {}", &output[..output.len().min(200)]);
                 add_log(
@@ -1805,18 +1819,21 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
                 match crate::plugins::execute_plugin_command(&plugin_result) {
                     Ok(msg) => {
                         add_log(&msg, LogLevel::Success);
+                        let _ = core::tts::speak(&msg);
                         return msg;
                     }
                     Err(_) => {}
                 }
             }
             let response = "Camera command processed.";
+            let _ = core::tts::speak(response);
             response.to_string()
         }
         "file_operation" => {
             let _ = core::tts::speak("Processing file command...");
             if let Some(response) = commands::files::process_file_command_async(command_to_use).await {
                 add_log(&response, LogLevel::Success);
+                let _ = core::tts::speak(&response);
                 response
             } else {
                 let response = "I couldn't complete that file operation.";
@@ -1840,14 +1857,13 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
         }
         "get_weather" => {
             let location = extract_json_string_field(_args, "location").unwrap_or_default();
-            let query = if location.is_empty() {
-                "current weather".to_string()
-            } else {
-                format!("current weather in {}", location)
-            };
-            add_log(&format!("[Weather] Searching: {}", query), LogLevel::Info);
-            let response = commands::web::search_and_read_results(&query).await
-                .unwrap_or_else(|| "Weather lookup failed.".to_string());
+            add_log(&format!("[Weather] Fetching weather via wttr.in for: '{}'", location), LogLevel::Info);
+            let response = commands::web::get_weather_via_api(&location).await
+                .unwrap_or_else(|| {
+                    let fallback = "I couldn't find weather for that location.";
+                    add_log(fallback, LogLevel::Warning);
+                    fallback.to_string()
+                });
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response
@@ -1862,6 +1878,27 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
         "tell_joke" => {
             let response = commands::web::search_and_read_results("tell me a joke").await
                 .unwrap_or_else(|| "Search failed.".to_string());
+            add_log(&response, LogLevel::Success);
+            let _ = core::tts::speak(&response);
+            response
+        }
+        "take_screenshot" => {
+            let response = commands::system::take_screenshot();
+            add_log(&response, LogLevel::Success);
+            let _ = core::tts::speak(&response);
+            response
+        }
+        "get_system_info" => {
+            let info_type = extract_json_string_field(_args, "info").unwrap_or_default();
+            let response = commands::system::get_system_info(&info_type);
+            add_log(&response, LogLevel::Success);
+            let _ = core::tts::speak(&response);
+            response
+        }
+        "clipboard_action" => {
+            let action = extract_json_string_field(_args, "action").unwrap_or_default();
+            let text = extract_json_string_field(_args, "text").unwrap_or_default();
+            let response = commands::system::clipboard_action(&action, &text);
             add_log(&response, LogLevel::Success);
             let _ = core::tts::speak(&response);
             response

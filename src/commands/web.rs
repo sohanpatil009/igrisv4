@@ -3,6 +3,7 @@
 
 use std::process::Command;
 use scraper::{Html, Selector};
+use serde::Deserialize;
 
 /// Supported search engines
 #[derive(Debug, Clone, PartialEq)]
@@ -418,10 +419,111 @@ pub async fn search_and_read_results(query: &str) -> Option<String> {
     }
 }
 
+// ─── Weather API (wttr.in) ─────────────────────────────────────────────
+
+/// Get weather via wttr.in API (free, no API key required)
+pub async fn get_weather_via_api(city: &str) -> Option<String> {
+    let client = reqwest::Client::new();
+    let url = if city.is_empty() {
+        "https://wttr.in/?format=j1".to_string()
+    } else {
+        format!("https://wttr.in/{}?format=j1", urlencoding::encode(city))
+    };
+
+    let resp = client.get(&url)
+        .header("User-Agent", "curl/8.0")
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let text = resp.text().await.ok()?;
+    let weather: WttrResponse = serde_json::from_str(&text).ok()?;
+
+    let current = weather.current_condition.first()?;
+    let area = weather.nearest_area.first()?;
+    let city_name = area.area_name()?;
+    let country = area.country()?;
+    let desc = current.weather_desc()?;
+    let temp = &current.temp_c;
+    let feels_like = &current.feels_like_c;
+    let humidity = &current.humidity;
+    let wind_speed = &current.wind_speed_kmph;
+    let wind_dir = &current.wind_dir16_point;
+    let visibility = &current.visibility;
+
+    Some(format!(
+        "Weather in {}, {}: {}. Temperature {}°C, feels like {}°C. Humidity {}%. Wind {} {} km/h. Visibility {} km.",
+        city_name, country, desc, temp, feels_like, humidity, wind_dir, wind_speed, visibility,
+    ))
+}
+
+#[derive(Deserialize)]
+struct WttrResponse {
+    current_condition: Vec<CurrentCondition>,
+    nearest_area: Vec<NearestArea>,
+}
+
+#[derive(Deserialize)]
+struct CurrentCondition {
+    #[serde(rename = "temp_C")]
+    temp_c: String,
+    humidity: String,
+    #[serde(rename = "windspeedKmph")]
+    wind_speed_kmph: String,
+    #[serde(rename = "winddir16Point")]
+    wind_dir16_point: String,
+    #[serde(rename = "FeelsLikeC")]
+    feels_like_c: String,
+    visibility: String,
+    #[serde(rename = "weatherDesc")]
+    weather_desc: Vec<WeatherDesc>,
+}
+
+#[derive(Deserialize)]
+struct WeatherDesc {
+    value: String,
+}
+
+#[derive(Deserialize)]
+struct NearestArea {
+    #[serde(rename = "areaName")]
+    area_name: Vec<AreaName>,
+    country: Vec<Country>,
+}
+
+#[derive(Deserialize)]
+struct AreaName {
+    value: String,
+}
+
+#[derive(Deserialize)]
+struct Country {
+    value: String,
+}
+
+impl CurrentCondition {
+    fn weather_desc(&self) -> Option<&str> {
+        self.weather_desc.first().map(|d| d.value.as_str())
+    }
+}
+
+impl NearestArea {
+    fn area_name(&self) -> Option<&str> {
+        self.area_name.first().map(|a| a.value.as_str())
+    }
+    fn country(&self) -> Option<&str> {
+        self.country.first().map(|c| c.value.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_extract_search_query() {
         assert_eq!(
