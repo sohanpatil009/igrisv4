@@ -42,6 +42,9 @@ pub mod media;
 // FastSwap file sharing integration
 pub mod fastswap;
 
+// Online mode (NVIDIA NIM API-based STT & Reasoning)
+pub mod online;
+
 // Global state for search results UI (shared across modules)
 #[derive(Clone, Debug, Default)]
 pub struct SearchState {

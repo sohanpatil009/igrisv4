@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, RwLock};
 // Import from library
 use igrisv3::{
     config, ui, core, nlu, commands, plugins, utils, platform, platform_utils,
-    setup_manager, media, fastswap,
+    setup_manager, media, fastswap, online,
     SearchState, SearchResultData, SEARCH_STATE, RESET_FLAG,
 };
 
@@ -29,7 +29,8 @@ use core::stt::{init_stt_engine, SttEngine, transcribe_audio, hybrid_transcribe_
 use core::tts::TTS_ENGINE;
 use core::wake_word::listen_for_wake_word;
 #[cfg(feature = "candle")]
-use core::local_llm::{is_local_llm_ready, global_reason, default_tool_system_prompt, parse_tool_call};
+use core::local_llm::{is_local_llm_ready, global_reason, default_tool_system_prompt};
+use online::reasoning::parse_tool_call;
 use config::CONFIG;
 use ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup};
 
@@ -144,8 +145,17 @@ fn start_setup_and_assistant() {
 
 async fn run_setup_and_assistant() {
     println!("\n═══════════════════════════════════════════════════════");
-    println!("[LAUNCH] IGRIS v3 - Offline Voice Assistant");
+    println!("[LAUNCH] IGRIS v3 - Voice Assistant (Hybrid Offline/Online)");
     println!("═══════════════════════════════════════════════════════\n");
+
+    // Load .env file for API keys (online mode)
+    let _ = dotenv::dotenv();
+    online::init_from_env();
+    if online::is_online_mode() {
+        println!("[ONLINE] Online mode enabled (NVIDIA NIM: Parakeet STT + GLM 5.1)");
+    } else {
+        println!("[OFFLINE] Using local models. Say 'switch to online mode' to enable cloud APIs.");
+    }
 
     // Initialize shared memory thread pools for faster response
     match init_shared_memory().await {
@@ -472,9 +482,25 @@ async fn continuous_listening_mode(
             add_log(&format!("Speech detected in {}ms", time_ms), LogLevel::Info);
         }
 
-        let command = match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
-            Ok(text) => text.trim().to_string(),
-            Err(_) => continue,
+        let command = if online::is_online_mode() {
+            match online::transcribe_online(&capture_result.samples).await {
+                Ok(text) => {
+                    add_log("[Online STT] Parakeet ASR", LogLevel::Info);
+                    text.trim().to_string()
+                }
+                Err(e) => {
+                    add_log(&format!("[Online STT] Failed ({}), falling back to local", e), LogLevel::Warning);
+                    match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
+                        Ok(text) => text.trim().to_string(),
+                        Err(_) => continue,
+                    }
+                }
+            }
+        } else {
+            match hybrid_transcribe_audio(&capture_result.samples, stt_engine).await {
+                Ok(text) => text.trim().to_string(),
+                Err(_) => continue,
+            }
         };
 
         if command.is_empty() {
@@ -589,6 +615,35 @@ async fn process_voice_command(
             Err(e) => {
                 add_log(&format!("About error: {}", e), LogLevel::Error);
             }
+        }
+        return Ok(false);
+    }
+    
+    // Check for online/offline mode switch
+    if cmd_lower.contains("switch to online mode")
+        || cmd_lower.contains("go online")
+        || cmd_lower.contains("enable online mode")
+        || cmd_lower.contains("turn on online mode") {
+        if online::is_online_mode() {
+            let _ = core::tts::speak("Already in online mode.");
+        } else {
+            online::enable_online_mode();
+            add_log("Switched to ONLINE mode (NVIDIA NIM)", LogLevel::Success);
+            let _ = core::tts::speak("Switched to online mode. Using cloud STT and reasoning.");
+        }
+        return Ok(false);
+    }
+    if cmd_lower.contains("switch to offline mode")
+        || cmd_lower.contains("go offline")
+        || cmd_lower.contains("disable online mode")
+        || cmd_lower.contains("turn off online mode")
+        || cmd_lower.contains("switch to local mode") {
+        if !online::is_online_mode() {
+            let _ = core::tts::speak("Already in offline mode.");
+        } else {
+            online::disable_online_mode();
+            add_log("Switched to OFFLINE mode (local models)", LogLevel::Success);
+            let _ = core::tts::speak("Switched to offline mode. Using local models now.");
         }
         return Ok(false);
     }
@@ -957,6 +1012,36 @@ async fn process_voice_command(
                     return Ok(false);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // Try reasoning: Online NIM (GLM 5.1) or local LLM (if available)
+    if online::is_online_mode() {
+        add_log("[Online] Reasoning via NVIDIA NIM GLM 5.1...", LogLevel::Info);
+        match online::reason_online(&online::reasoning::online_tool_system_prompt(), command_to_use).await {
+            Ok(output) => {
+                add_log(
+                    &format!("[Online] Raw output: {}", &output[..output.len().min(120)]),
+                    LogLevel::Info,
+                );
+                if let Some((tool, args)) = parse_tool_call(&output) {
+                    add_log(
+                        &format!("[Online] Tool: {} | args: {}", tool, args),
+                        LogLevel::Info,
+                    );
+                    let response = route_llm_tool(tool, args, command_to_use).await;
+                    nlu::context::add_to_context(
+                        command.to_string(),
+                        response.clone(),
+                        format!("online_{}", tool),
+                        vec![],
+                    );
+                    return Ok(false);
+                }
+            }
+            Err(e) => {
+                add_log(&format!("[Online] GLM error ({}), trying local fallback", e), LogLevel::Warning);
             }
         }
     }
@@ -1640,7 +1725,6 @@ fn add_log(message: &str, level: LogLevel) {
 }
 
 /// Route an LLM-discovered tool call to the appropriate command handler.
-#[cfg(feature = "candle")]
 async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String {
     match tool {
         "open_app" => {
@@ -1785,7 +1869,6 @@ async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> String
 }
 
 /// Quick helper to pull the "response" field from a JSON args blob.
-#[cfg(feature = "candle")]
 fn extract_chat_response(args: &str) -> Option<String> {
     let re = regex::Regex::new(r#""response"\s*:\s*"([^"]+)""#).ok()?;
     let caps = re.captures(args)?;
