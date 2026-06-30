@@ -604,8 +604,16 @@ impl PluginManager {
 
     /// Send an HTTP request
     fn send_http_request(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
-        // Simple HTTP GET request
-        let response = reqwest::blocking::get(url)?;
+        fn client() -> &'static reqwest::blocking::Client {
+            static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+            CLIENT.get_or_init(|| {
+                reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .expect("Failed to create HTTP client")
+            })
+        }
+        let response = client().get(url).send()?;
         let status = response.status();
         
         Ok(format!("HTTP request to {} returned: {}", url, status))
