@@ -9,6 +9,21 @@ use std::sync::{Arc, Mutex};
 /// Maximum number of conversation turns to remember
 const MAX_CONTEXT_SIZE: usize = 10;
 
+/// A record of a completed task step within a chained command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStepRecord {
+    pub tool: String,
+    pub command: String,
+    pub result: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+impl TaskStepRecord {
+    pub fn new(tool: String, command: String, result: String) -> Self {
+        Self { tool, command, result, timestamp: Utc::now() }
+    }
+}
+
 /// A single conversation turn with enhanced NER and SBERT support
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationTurn {
@@ -72,6 +87,10 @@ pub struct ContextMemory {
     history: VecDeque<ConversationTurn>,
     max_size: usize,
     current_topic: Option<String>,
+    /// Tracks completed task steps for chaining context
+    task_history: VecDeque<TaskStepRecord>,
+    /// Accumulated entities available across turns
+    entity_pool: HashMap<String, String>,
 }
 
 impl ContextMemory {
@@ -80,6 +99,8 @@ impl ContextMemory {
             history: VecDeque::with_capacity(MAX_CONTEXT_SIZE),
             max_size: MAX_CONTEXT_SIZE,
             current_topic: None,
+            task_history: VecDeque::with_capacity(20),
+            entity_pool: HashMap::new(),
         }
     }
 
@@ -92,7 +113,63 @@ impl ContextMemory {
         // Update current topic based on intent
         self.current_topic = Some(turn.intent.clone());
         
+        // Merge entities into entity pool
+        for (k, v) in &turn.entity_map {
+            self.entity_pool.insert(k.clone(), v.clone());
+        }
+        for e in &turn.entities {
+            self.entity_pool.insert(e.clone(), e.clone());
+        }
+        
         self.history.push_back(turn);
+    }
+
+    /// Record a completed task step in a chained command
+    pub fn add_task_step(&mut self, tool: String, command: String, result: String) {
+        if self.task_history.len() >= 20 {
+            self.task_history.pop_front();
+        }
+        self.task_history.push_back(TaskStepRecord::new(tool, command, result));
+    }
+
+    /// Get recent task steps for context
+    pub fn get_recent_task_steps(&self, n: usize) -> Vec<TaskStepRecord> {
+        self.task_history.iter().rev().take(n).cloned().collect()
+    }
+
+    /// Build a formatted context string for LLM consumption with
+    /// conversation history, task history, and available entities.
+    pub fn build_llm_context(&self) -> String {
+        let mut parts = Vec::new();
+
+        // Conversation turns
+        let turns = self.get_recent_turns(3);
+        if !turns.is_empty() {
+            parts.push("Recent conversation:".to_string());
+            for turn in &turns {
+                parts.push(format!("  User: {}", turn.user_input));
+                parts.push(format!("  Assistant: {}", turn.assistant_response));
+            }
+        }
+
+        // Task history
+        let tasks = self.get_recent_task_steps(5);
+        if !tasks.is_empty() {
+            parts.push("Recent task results:".to_string());
+            for task in &tasks {
+                parts.push(format!("  → {} ({}): {}", task.tool, task.command, task.result));
+            }
+        }
+
+        // Available entities
+        if !self.entity_pool.is_empty() {
+            let entries: Vec<String> = self.entity_pool.iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
+            parts.push(format!("Known entities: {}", entries.join(", ")));
+        }
+
+        parts.join("\n")
     }
 
     /// Get the last N turns
@@ -264,6 +341,21 @@ pub fn get_recent_context(n: usize) -> Vec<ConversationTurn> {
 /// Resolve references in user input
 pub fn resolve_references(input: &str) -> String {
     GLOBAL_CONTEXT.lock().unwrap().resolve_reference(input)
+}
+
+/// Record a completed task step in the global context
+pub fn add_task_step(tool: String, command: String, result: String) {
+    GLOBAL_CONTEXT.lock().unwrap().add_task_step(tool, command, result);
+}
+
+/// Get recent task steps
+pub fn get_recent_task_steps(n: usize) -> Vec<TaskStepRecord> {
+    GLOBAL_CONTEXT.lock().unwrap().get_recent_task_steps(n)
+}
+
+/// Build a formatted LLM context string with conversation + task history
+pub fn build_llm_context() -> String {
+    GLOBAL_CONTEXT.lock().unwrap().build_llm_context()
 }
 
 /// Get conversation summary

@@ -891,6 +891,70 @@ pub async fn process_file_command_async(text: &str) -> Option<String> {
         }
     }
 
+    // Read file
+    if text_lower.contains("read") && text_lower.contains("file") {
+        if let Some((name, ext)) = extract_file_info(&text_lower) {
+            let file_path = format!("{}.{}", name, ext);
+            match read_text_from_file(&file_path) {
+                Ok(content) => {
+                    let preview = if content.len() > 200 {
+                        format!("{}... ({} more chars)", &content[..200], content.len() - 200)
+                    } else {
+                        content.clone()
+                    };
+                    let _ = speak(&format!("Read {}: {}", file_path, preview));
+                    return Some(format!("Content of {}:\n{}", file_path, content));
+                }
+                Err(e) => return Some(format!("Error reading file: {}", e)),
+            }
+        }
+    }
+
+    // Write to file
+    if text_lower.contains("write") && text_lower.contains("file") {
+        // Extract content after "write to file" or "write file"
+        let content_patterns = ["write to file ", "write file ", "write to "];
+        for pattern in &content_patterns {
+            if let Some(pos) = text_lower.find(pattern) {
+                let after = &text[pattern.len() + pos..];
+                // Split by "that says" or "with content" to separate file path from content
+                if let Some(sep_pos) = after.find(" that says ") {
+                    let file_ref = &after[..sep_pos].trim();
+                    let content = after[sep_pos + 11..].trim();
+                    match write_text_to_file(file_ref, content) {
+                        Ok(msg) => return Some(msg),
+                        Err(e) => return Some(format!("Error writing file: {}", e)),
+                    }
+                } else if let Some(sep_pos) = after.find(" with ") {
+                    let file_ref = &after[..sep_pos].trim();
+                    let content = after[sep_pos + 6..].trim();
+                    match write_text_to_file(file_ref, content) {
+                        Ok(msg) => return Some(msg),
+                        Err(e) => return Some(format!("Error writing file: {}", e)),
+                    }
+                } else {
+                    // Try extracting filename and content from the rest
+                    let words: Vec<&str> = after.split_whitespace().collect();
+                    if let Some((name, ext)) = extract_file_info(text) {
+                        let file_path = format!("{}.{}", name, ext);
+                        // Rest of the text after the filename is the content
+                        let file_pattern = format!("{}.{}", name, ext);
+                        if let Some(content_pos) = after.find(&file_pattern) {
+                            let content = after[content_pos + file_pattern.len()..].trim();
+                            if !content.is_empty() {
+                                match write_text_to_file(&file_path, content) {
+                                    Ok(msg) => return Some(msg),
+                                    Err(e) => return Some(format!("Error writing file: {}", e)),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Some("Please specify what to write. Try: write to file notes.txt that says hello world".to_string());
+    }
+
     // For other file operations, use the sync version
     process_file_command(text)
 }
@@ -1072,6 +1136,63 @@ pub fn process_file_command(text: &str) -> Option<String> {
             }
         }
     }  // Close the "Open folder" if block
+
+    // Read file
+    if text_lower.contains("read") && text_lower.contains("file") {
+        if let Some((name, ext)) = extract_file_info(&text_lower) {
+            let file_path = format!("{}.{}", name, ext);
+            match read_text_from_file(&file_path) {
+                Ok(content) => {
+                    let preview = if content.len() > 200 {
+                        format!("{}... ({} more chars)", &content[..200], content.len() - 200)
+                    } else {
+                        content.clone()
+                    };
+                    let _ = speak(&format!("Read {}: {}", file_path, preview));
+                    return Some(format!("Content of {}:\n{}", file_path, content));
+                }
+                Err(e) => return Some(format!("Error reading file: {}", e)),
+            }
+        }
+    }
+
+    // Write to file
+    if text_lower.contains("write") && text_lower.contains("file") {
+        let content_patterns = ["write to file ", "write file ", "write to "];
+        for pattern in &content_patterns {
+            if let Some(pos) = text_lower.find(pattern) {
+                let after = &text[pattern.len() + pos..];
+                if let Some(sep_pos) = after.find(" that says ") {
+                    let file_ref = &after[..sep_pos].trim();
+                    let content = after[sep_pos + 11..].trim();
+                    match write_text_to_file(file_ref, content) {
+                        Ok(msg) => return Some(msg),
+                        Err(e) => return Some(format!("Error writing file: {}", e)),
+                    }
+                } else if let Some(sep_pos) = after.find(" with ") {
+                    let file_ref = &after[..sep_pos].trim();
+                    let content = after[sep_pos + 6..].trim();
+                    match write_text_to_file(file_ref, content) {
+                        Ok(msg) => return Some(msg),
+                        Err(e) => return Some(format!("Error writing file: {}", e)),
+                    }
+                } else if let Some((name, ext)) = extract_file_info(text) {
+                    let file_path = format!("{}.{}", name, ext);
+                    let file_pattern = format!("{}.{}", name, ext);
+                    if let Some(content_pos) = after.find(&file_pattern) {
+                        let content = after[content_pos + file_pattern.len()..].trim();
+                        if !content.is_empty() {
+                            match write_text_to_file(&file_path, content) {
+                                Ok(msg) => return Some(msg),
+                                Err(e) => return Some(format!("Error writing file: {}", e)),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Some("Please specify what to write. Try: write to file notes.txt that says hello world".to_string());
+    }
 
     // Search folder
     if (text_lower.contains("search") || text_lower.contains("find")) && text_lower.contains("folder") {

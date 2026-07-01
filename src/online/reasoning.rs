@@ -196,18 +196,32 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
         - For questions about facts, news, or information, use search_web.\n\
         - Output ONLY valid JSON. No markdown, no explanation, no extra text.\n\
         \n\
-        Your response MUST be a JSON object with \"tool\" and \"args\" fields.\n\
+        Your response MUST be valid JSON. For a single action, use:\n\
+        {{\"tool\": \"tool_name\", \"args\": {{...}}}}\n\
+        For multiple actions (command chaining), use a JSON array:\n\
+        [{{\"tool\": \"tool_name\", \"args\": {{...}}}}, {{\"tool\": \"tool_name\", \"args\": {{...}}}}]\n\
+        Examples of when to chain:\n\
+         - \"search for cats\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"https://www.google.com/search?q=cats\"}}}}\n\
+        - \"open chrome and search for cats\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"https://www.google.com/search?q=cats\", \"browser\": \"chrome\"}}}}\n\
+        - \"search for weather in London\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"https://www.google.com/search?q=weather+in+london\"}}}}\n\
+        - \"open browser and go to youtube\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"https://youtube.com\"}}}}\n\
+        - \"open safari and go to youtube\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"https://youtube.com\", \"browser\": \"safari\"}}}}\n\
+        - \"write code for a sorting algorithm in python and open it\" → {{\"tool\": \"generate_code\", \"args\": {{\"language\": \"python\", \"code\": \"def bubble_sort(arr):\\n    n = len(arr)\\n    for i in range(n):\\n        for j in range(0, n-i-1):\\n            if arr[j] > arr[j+1]:\\n                arr[j], arr[j+1] = arr[j+1], arr[j]\\n    return arr\", \"filename\": \"sorting.py\"}}}}\n\
+        CRITICAL RULE for search+browser requests: NEVER use open_app then search_web as separate steps. ALWAYS use a single open_website with a Google search URL. The browser opening + search is ONE action.\n\
+        - \"tell me a joke and take a screenshot\" → [{{\"tool\": \"tell_joke\", \"args\": {{}}}}, {{\"tool\": \"take_screenshot\", \"args\": {{}}}}]\n\
+        - \"write a Python script to sort a list and open it\" → [{{\"tool\": \"generate_code\", \"args\": {{\"language\": \"python\", \"code\": \"def sort_list(arr):\\n    return sorted(arr)\\n\\nif __name__ == '__main__':\\n    print(sort_list([3, 1, 2]))\", \"filename\": \"sort_list.py\"}}}}, {{\"tool\": \"open_app\", \"args\": {{\"app\": \"code\"}}}}]\n\
+        - \"compose an email to John about the meeting\" → {{\"tool\": \"open_website\", \"args\": {{\"url\": \"mailto:john@example.com?subject=Meeting%20Agenda&body=Hi%20John%2C%0A%0ALet%27s%20discuss%20the%20project%20tomorrow.%0A%0ABest%2C%0AYour%20Name\"}}}}\n\
         \n\
         Available tools:\n\
         \n\
         1. open_app {{\"app\": \"name\"}} — Open any application (chrome, firefox, vscode, spotify, etc.)\n\
         2. close_app {{\"app\": \"name\"}} — Close a running application\n\
         3. close_all_apps {{}} — Close all running applications\n\
-        4. search_web {{\"query\": \"...\"}} — Search the web for information, facts, news, answers\n\
-        5. open_website {{\"url\": \"...\"}} — Open a website in the browser\n\
+         4. search_web {{\"query\": \"...\"}} — Search the web and read results aloud (use for facts, questions, news). Do NOT use for browser searches — use open_website with a Google search URL instead.\n\
+          5. open_website {{\"url\": \"...\", \"browser\": \"chrome|firefox|safari|edge|brave\"}} — Open a URL in the specified browser (omit browser to use default). Include browser name if user mentions one. Works with http://, https://, and mailto: URIs. PREFERRED for search queries + browser combos.\n\
         6. system_command {{\"command\": \"shutdown|restart|sleep|lock|volume_up|volume_down|mute\"}} — System control\n\
         7. camera_action {{\"action\": \"photo|video_start|video_stop\"}} — Take a photo or record video\n\
-        8. file_operation {{\"action\": \"create|delete|open|list\", \"path\": \"...\"}} — File and folder operations\n\
+         8. file_operation {{\"action\": \"create|delete|open|list|read|write\", \"path\": \"...\"}} — File and folder operations\n\
         9. set_alarm {{\"time\": \"...\"}} — Set an alarm (e.g. \"7:00 am\")\n\
         10. set_reminder {{\"text\": \"...\"}} — Set a reminder\n\
         11. get_weather {{\"location\": \"city name\"}} — Get current weather for any city. BEST tool for all weather, climate, temperature queries.\n\
@@ -216,8 +230,12 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
         14. take_screenshot {{}} — Take a screenshot\n\
         15. get_system_info {{\"info\": \"os|memory|cpu|ip|uptime|all\"}} — Get system information\n\
         16. clipboard_action {{\"action\": \"read|write\", \"text\": \"...\"}} — Read or write clipboard\n\
-        17. general_chat {{\"response\": \"...\"}} — Casual conversation, greetings, farewells\n\
-        18. switch_mode {{\"mode\": \"online|offline\"}} — Switch between online and offline mode",
+         17. read_file {{\"path\": \"...\"}} — Read the contents of a text file\n\
+         18. write_file {{\"path\": \"...\", \"content\": \"...\"}} — Write content to a text file\n\
+          19. compose_email {{\"to\": \"...\", \"subject\": \"...\", \"body\": \"...\"}} — Compose an email and open the default email client with fields pre-filled. The body must be URL-encoded. ALWAYS use this for email requests.\n\
+          20. generate_code {{\"language\": \"python|rust|javascript|typescript|java|go|cpp|html|css|...\", \"code\": \"...\", \"filename\": \"...\"}} — Generate code in any language and save to a file, then open it in the available IDE (VS Code if installed) or default text editor. The LLM generates the complete code. ALWAYS use this for code generation requests.\n\
+         21. general_chat {{\"response\": \"...\"}} — Casual conversation, greetings, farewells\n\
+         22. switch_mode {{\"mode\": \"online|offline\"}} — Switch between online and offline mode",
         name = name, personality_desc = personality_desc,
     );
 
@@ -236,7 +254,7 @@ pub async fn reason_online(system_prompt: &str, user_query: &str) -> Result<Stri
     reasoning.reason(system_prompt, user_query).await
 }
 
-/// Parse a JSON tool call from the LLM output.
+/// Parse a JSON tool call from the LLM output (single tool).
 /// Returns (tool_name, arguments_json_string) with leaked `'static` lifetimes
 /// — safe because these are small strings used ephemerally per-request.
 pub fn parse_tool_call(output: &str) -> Option<(&'static str, &'static str)> {
@@ -262,6 +280,73 @@ pub fn parse_tool_call(output: &str) -> Option<(&'static str, &'static str)> {
     };
 
     Some((Box::leak(tool.into_boxed_str()), Box::leak(args.into_boxed_str())))
+}
+
+/// Parse one or more tool calls from the LLM output.
+/// Supports both single `{"tool":"...","args":{...}}` and
+/// multi-tool `[{"tool":"...","args":{...}}, ...]` JSON formats.
+pub fn parse_tool_calls(output: &str) -> Vec<(String, String)> {
+    let output = output.trim();
+
+    // Multi-tool: JSON array
+    if output.starts_with('[') {
+        let end = output.rfind(']').unwrap_or(output.len());
+        let array_str = &output[..=end];
+        let mut results = Vec::new();
+        let mut depth = 0;
+        let mut obj_start = None;
+
+        for (i, ch) in array_str.char_indices() {
+            match ch {
+                '{' => {
+                    if depth == 0 {
+                        obj_start = Some(i);
+                    }
+                    depth += 1;
+                }
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        if let Some(start) = obj_start {
+                            let obj = &array_str[start..=i];
+                            if let Some((t, a)) = extract_single_call(obj) {
+                                results.push((t.to_string(), a.to_string()));
+                            }
+                        }
+                        obj_start = None;
+                    }
+                }
+                _ => {}
+            }
+        }
+        return results;
+    }
+
+    // Single tool: try as-is
+    if let Some((tool, args)) = parse_tool_call(output) {
+        return vec![(tool.to_string(), args.to_string())];
+    }
+
+    Vec::new()
+}
+
+fn extract_single_call(json: &str) -> Option<(&str, &str)> {
+    let tool_start = json.find("\"tool\"")?;
+    let after_tool = &json[tool_start..];
+    let colon = after_tool.find(':')? + tool_start + 1;
+    let val_start = json[colon..].find('"')? + colon + 1;
+    let val_end = json[val_start..].find('"')? + val_start;
+    let tool = &json[val_start..val_end];
+
+    let args_brace = json.find("\"args\"")
+        .or_else(|| json.find("\"arguments\""))?;
+    let after_field = &json[args_brace..];
+    let brace = after_field.find('{')? + args_brace;
+    let rest = &json[brace + 1..];
+    let end = rest.find('}')? + brace + 1;
+    let args = &json[brace..=end];
+
+    Some((tool, args))
 }
 
 pub fn extract_json_string_field(json: &str, field: &str) -> Option<String> {

@@ -5,5 +5,6 @@ pub mod ner;
 pub mod context;
 pub mod sbert;
 pub mod nlu_processor;
+pub mod sentence_splitter;
 
 

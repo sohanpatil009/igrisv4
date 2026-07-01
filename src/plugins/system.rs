@@ -553,8 +553,15 @@ impl PluginManager {
         "Done.".to_string()
     }
 
-    /// Open a URL in the default browser
+    /// Open a URL in the default browser, tracking the site → browser mapping
     fn open_url(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
+        use crate::utils::process_tracker::{track_site, extract_site_name};
+
+        let site_name = extract_site_name(url);
+
+        // Detect which browser is the default
+        let (browser_exe, browser_name) = self.detect_default_browser();
+
         #[cfg(target_os = "windows")]
         {
             std::process::Command::new("cmd")
@@ -575,8 +582,118 @@ impl PluginManager {
                 .arg(url)
                 .spawn()?;
         }
-        
-        Ok(format!("Opened: {}", url))
+
+        // Track the site → browser mapping so "close youtube" works
+        track_site(url, &browser_exe, &browser_name);
+
+        Ok(format!("Opened {} in {}", site_name, browser_name))
+    }
+
+    /// Detect the default browser for site tracking purposes.
+    /// Returns (browser_exe, browser_display_name).
+    /// The exe name must match what `pkill -f` or `taskkill /IM` expects.
+    fn detect_default_browser(&self) -> (String, String) {
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(output) = std::process::Command::new("defaults")
+                .args(["read", "com.apple.LaunchServices/com.apple.launchservices.secure", "LSHandlers"])
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains("Google Chrome") || stdout.contains("chrome") {
+                    return ("Google Chrome".to_string(), "Google Chrome".to_string());
+                }
+                if stdout.contains("Firefox") || stdout.contains("firefox") {
+                    return ("firefox".to_string(), "Firefox".to_string());
+                }
+                if stdout.contains("Safari") || stdout.contains("safari") {
+                    return ("Safari".to_string(), "Safari".to_string());
+                }
+                if stdout.contains("Brave") || stdout.contains("brave") {
+                    return ("Brave Browser".to_string(), "Brave Browser".to_string());
+                }
+                if stdout.contains("Edge") || stdout.contains("edge") {
+                    return ("Microsoft Edge".to_string(), "Microsoft Edge".to_string());
+                }
+                if stdout.contains("Arc") || stdout.contains("arc") {
+                    return ("Arc".to_string(), "Arc".to_string());
+                }
+                if stdout.contains("Opera") || stdout.contains("opera") {
+                    return ("Opera".to_string(), "Opera".to_string());
+                }
+                if stdout.contains("Vivaldi") || stdout.contains("vivaldi") {
+                    return ("Vivaldi".to_string(), "Vivaldi".to_string());
+                }
+            }
+            ("Safari".to_string(), "Safari".to_string())
+        }
+        #[cfg(target_os = "windows")]
+        {
+            // Try to read the default browser from the registry
+            let candidates = [
+                ("chrome.exe", "Google Chrome"),
+                ("firefox.exe", "Firefox"),
+                ("msedge.exe", "Microsoft Edge"),
+                ("brave.exe", "Brave Browser"),
+                ("opera.exe", "Opera"),
+                ("vivaldi.exe", "Vivaldi"),
+            ];
+            // Check which browsers are installed by looking for their executables
+            for (exe, name) in &candidates {
+                if std::path::Path::new(&format!("C:\\Program Files\\{}\\{}", name, exe)).exists()
+                    || std::path::Path::new(&format!("C:\\Program Files (x86)\\{}\\{}", name, exe)).exists()
+                {
+                    return (exe.to_string(), name.to_string());
+                }
+            }
+            ("chrome.exe".to_string(), "Google Chrome".to_string())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // Try xdg-settings first (most reliable on desktop Linux)
+            if let Ok(output) = std::process::Command::new("xdg-settings")
+                .args(["get", "default-web-browser"])
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+                if stdout.contains("google-chrome") || stdout.contains("chrome") {
+                    return ("google-chrome".to_string(), "Google Chrome".to_string());
+                }
+                if stdout.contains("firefox") {
+                    return ("firefox".to_string(), "Firefox".to_string());
+                }
+                if stdout.contains("brave") {
+                    return ("brave-browser".to_string(), "Brave Browser".to_string());
+                }
+                if stdout.contains("microsoft-edge") || stdout.contains("msedge") {
+                    return ("microsoft-edge".to_string(), "Microsoft Edge".to_string());
+                }
+                if stdout.contains("opera") {
+                    return ("opera".to_string(), "Opera".to_string());
+                }
+                if stdout.contains("vivaldi") {
+                    return ("vivaldi".to_string(), "Vivaldi".to_string());
+                }
+            }
+            // Fallback: check common browser binaries
+            for (exe, name) in &[
+                ("google-chrome", "Google Chrome"),
+                ("firefox", "Firefox"),
+                ("brave-browser", "Brave Browser"),
+                ("microsoft-edge", "Microsoft Edge"),
+                ("opera", "Opera"),
+                ("vivaldi", "Vivaldi"),
+            ] {
+                if std::process::Command::new("which").arg(exe).output().map_or(false, |o| o.status.success()) {
+                    return (exe.to_string(), name.to_string());
+                }
+            }
+            ("google-chrome".to_string(), "Google Chrome".to_string())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            ("browser".to_string(), "Browser".to_string())
+        }
     }
 
     /// Run a script file

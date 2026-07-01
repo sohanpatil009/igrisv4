@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use crate::utils::{track_process, ProcessCategory};
 
 lazy_static! {
     static ref RUNNING_PROCESSES: Mutex<HashMap<String, u32>> = Mutex::new(HashMap::new());
@@ -77,6 +78,7 @@ impl AppLauncher for WindowsAppLauncher {
                     let pid = child.id();
                     let mut procs = RUNNING_PROCESSES.lock().unwrap();
                     procs.insert(display_name.clone(), pid);
+                    track_process(&display_name, &exe_name, ProcessCategory::App);
                     return Ok(format!("Opening {}", display_name));
                 }
                 Err(_) => continue,
@@ -149,6 +151,7 @@ impl AppLauncher for LinuxAppLauncher {
             Ok(_) => {
                 let mut procs = RUNNING_PROCESSES.lock().unwrap();
                 procs.insert(display_name.clone(), 0);
+                track_process(&display_name, &cmd_name, ProcessCategory::App);
                 Ok(format!("Opening {}", display_name))
             }
             Err(e) => Err(format!("I couldn't find {}. Please check the app name and try again.", display_name).into()),
@@ -207,16 +210,16 @@ impl AppLauncher for MacOSAppLauncher {
         println!("[macOS] Opening app: {} -> bundle: {}", app_name, bundle_name);
         
         // Use simple 'open' command - no permissions needed
-        // -g flag brings to foreground
-        // -n flag opens new instance if needed
+        // Opens the app and brings its window to front
         match Command::new("open")
-            .args(&["-g", "-a", &bundle_name])
+            .args(&["-a", &bundle_name])
             .spawn()
         {
             Ok(_) => {
                 println!("[macOS] Successfully opened {}", bundle_name);
                 let mut procs = RUNNING_PROCESSES.lock().unwrap();
                 procs.insert(display_name.clone(), 0);
+                track_process(&display_name, &bundle_name, ProcessCategory::App);
                 Ok(format!("Opening {}", display_name))
             }
             Err(e) => {

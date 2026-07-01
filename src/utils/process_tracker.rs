@@ -1,7 +1,7 @@
 // src/utils/process_tracker.rs - Track processes opened by IGRIS
 // Uses process NAME based tracking (not PID) because Windows `start` command
 // spawns cmd.exe which exits immediately, while the actual app runs separately
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 
@@ -28,6 +28,9 @@ pub enum ProcessCategory {
 lazy_static! {
     /// Global process tracker
     pub static ref PROCESS_TRACKER: Mutex<ProcessTracker> = Mutex::new(ProcessTracker::new());
+    /// Maps opened website/site names to the (browser_name, browser_exe) that opened them.
+    /// e.g., "youtube" → ("Google Chrome", "Google Chrome")
+    pub static ref OPENED_SITES: Mutex<HashMap<String, (String, String)>> = Mutex::new(HashMap::new());
 }
 
 pub struct ProcessTracker {
@@ -240,5 +243,86 @@ pub fn get_process_count(category: ProcessCategory) -> usize {
         tracker.get_by_category(category).len()
     } else {
         0
+    }
+}
+
+// ============================================================================
+// Web resource tracking - maps opened sites to the browser that opened them
+// ============================================================================
+
+/// Extract a clean site name from a URL (e.g., "https://youtube.com/watch?v=..." → "youtube")
+pub fn extract_site_name(url: &str) -> String {
+    let url = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("www.");
+    if let Some(dot_pos) = url.find('.') {
+        url[..dot_pos].to_string()
+    } else {
+        url.split('/').next().unwrap_or(url).to_string()
+    }
+}
+
+/// Track that a website was opened, mapping its site name to the browser used.
+/// This allows "close youtube" to find and close the browser that opened it.
+pub fn track_site(url: &str, browser_exe: &str, browser_name: &str) {
+    let site = extract_site_name(url);
+    if let Ok(mut sites) = OPENED_SITES.lock() {
+        sites.insert(site.clone(), (browser_name.to_string(), browser_exe.to_string()));
+    }
+    // Also track the browser itself as an opened app
+    track_process(browser_name, browser_exe, ProcessCategory::App);
+}
+
+/// Find the browser that was used to open a given site.
+/// Returns `(browser_name, browser_exe)`.
+pub fn find_browser_for_site(site: &str) -> Option<(String, String)> {
+    let site_lower = site.to_lowercase();
+    if let Ok(sites) = OPENED_SITES.lock() {
+        // Direct match
+        if let Some((browser_name, browser_exe)) = sites.get(&site_lower) {
+            return Some((browser_name.clone(), browser_exe.clone()));
+        }
+        // Check if any tracked site name is contained in the input
+        for (tracked_site, (browser_name, browser_exe)) in sites.iter() {
+            if site_lower.contains(tracked_site) || tracked_site.contains(&site_lower) {
+                return Some((browser_name.clone(), browser_exe.clone()));
+            }
+        }
+    }
+    None
+}
+
+/// Close a site by closing the browser that opened it.
+/// Returns a message describing what was closed.
+pub fn close_site(site: &str) -> Result<String, String> {
+    let (browser, exe_name) = find_browser_for_site(site).ok_or_else(|| {
+        format!("No browser found for site '{}'", site)
+    })?;
+
+    kill_process_by_name(&exe_name)?;
+
+    // Clean up all sites that were using this browser
+    if let Ok(mut sites) = OPENED_SITES.lock() {
+        sites.retain(|_, (_, v_exe)| v_exe != &exe_name);
+    }
+    if let Ok(mut tracker) = PROCESS_TRACKER.lock() {
+        tracker.remove(&exe_name);
+    }
+
+    Ok(format!("Closed {} (browser: {})", site, browser))
+}
+
+/// Check if a given name refers to a tracked web resource.
+pub fn is_tracked_site(name: &str) -> bool {
+    find_browser_for_site(name).is_some()
+}
+
+/// Get all tracked sites
+pub fn get_tracked_sites() -> Vec<(String, String, String)> {
+    if let Ok(sites) = OPENED_SITES.lock() {
+        sites.iter().map(|(k, (n, e))| (k.clone(), n.clone(), e.clone())).collect()
+    } else {
+        Vec::new()
     }
 }

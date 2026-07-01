@@ -2,6 +2,8 @@
 
 pub mod reasoning;
 pub mod stt;
+pub mod task_planner;
+pub mod intent_router;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;

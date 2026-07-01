@@ -13,4 +13,6 @@ pub use process_tracker::{
     ProcessCategory, track_process,
     close_all_apps, close_all_camera, close_all_processes,
     get_process_count, PROCESS_TRACKER,
+    track_site, find_browser_for_site, close_site, is_tracked_site,
+    extract_site_name, get_tracked_sites, OPENED_SITES,
 };
