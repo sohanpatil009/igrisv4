@@ -96,9 +96,6 @@ impl EcoManager {
         );
         self.clipboard = Some(Arc::new(std::sync::Mutex::new(clipboard)));
 
-        let sync = SyncManager::new(self.event_bus.clone());
-        self.sync = Some(Arc::new(sync));
-
         self.initialized = true;
         self.running = false;
 
@@ -148,10 +145,37 @@ impl EcoManager {
             local_device.clone(),
             transport,
             port,
+            self.event_bus.clone(),
         ));
         discovery.start_listener(&addr).await;
         discovery.start_broadcast().await;
         discovery.run_cleanup().await;
+
+        let known_devices = discovery.get_known_devices();
+
+        let sync = Arc::new(SyncManager::new(
+            self.event_bus.clone(),
+            self.transport.clone(),
+            known_devices,
+            self.local_device.clone(),
+        ));
+        let _ = sync.start().await;
+        self.sync = Some(sync);
+
+        {
+            let event_bus = self.event_bus.clone();
+            let manager_ptr = self.clipboard.clone().unwrap();
+            event_bus.subscribe(Arc::new(move |event| {
+                if let EcoEvent::ClipboardReceived(data, _from) = event {
+                    let manager = manager_ptr.clone();
+                    tokio::spawn(async move {
+                        if let Ok(mut guard) = manager.lock() {
+                            let _ = guard.apply_clipboard(&data);
+                        }
+                    });
+                }
+            }));
+        }
 
         self.discovery = Some(discovery);
 

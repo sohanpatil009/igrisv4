@@ -1,6 +1,7 @@
 use crate::eco::constants::*;
 use crate::eco::device::{Capabilities, DeviceStatus, EcoDevice};
 use crate::eco::errors::{EcoError, EcoResult};
+use crate::eco::events::{EcoEvent, EventBus};
 use crate::eco::protocol::{DeviceAnnouncement, EcoMessage, MessageType};
 use crate::eco::transport::EcoTransport;
 use std::collections::HashMap;
@@ -14,11 +15,12 @@ pub struct DeviceDiscovery {
     known_devices: Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
     transport: Arc<EcoTransport>,
     eco_port: u16,
+    event_bus: Arc<EventBus>,
 }
 
-struct DiscoveredDevice {
-    device: EcoDevice,
-    last_heartbeat: Instant,
+pub(crate) struct DiscoveredDevice {
+    pub(crate) device: EcoDevice,
+    pub(crate) last_heartbeat: Instant,
 }
 
 impl DeviceDiscovery {
@@ -26,16 +28,18 @@ impl DeviceDiscovery {
         local_device: Arc<RwLock<EcoDevice>>,
         transport: Arc<EcoTransport>,
         eco_port: u16,
+        event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             local_device,
             known_devices: Arc::new(RwLock::new(HashMap::new())),
             transport,
             eco_port,
+            event_bus,
         }
     }
 
-    pub fn get_known_devices(&self) -> Arc<RwLock<HashMap<String, DiscoveredDevice>>> {
+    pub(crate) fn get_known_devices(&self) -> Arc<RwLock<HashMap<String, DiscoveredDevice>>> {
         self.known_devices.clone()
     }
 
@@ -64,6 +68,9 @@ impl DeviceDiscovery {
                     ].into(),
                     public_key: device.public_key.clone(),
                     eco_port,
+                    ip_address: local_ip_address::local_ip()
+                        .map(|ip| ip.to_string())
+                        .unwrap_or_default(),
                 };
                 drop(device);
 
@@ -82,6 +89,7 @@ impl DeviceDiscovery {
         let known_devices = self.known_devices.clone();
         let transport = self.transport.clone();
         let local_device = self.local_device.clone();
+        let event_bus = self.event_bus.clone();
         let bind_addr = *addr;
 
         let app = axum::Router::new()
@@ -104,6 +112,9 @@ impl DeviceDiscovery {
                             ].into(),
                             public_key: d.public_key.clone(),
                             eco_port: 0,
+                            ip_address: local_ip_address::local_ip()
+                                .map(|ip| ip.to_string())
+                                .unwrap_or_default(),
                         };
                         let msg = EcoMessage::new(
                             MessageType::Announcement(announcement),
@@ -116,17 +127,36 @@ impl DeviceDiscovery {
             }))
             .route("/api/ecosystem/v1/message", axum::routing::post({
                 let known_devices = known_devices.clone();
+                let event_bus = event_bus.clone();
                 move |body: axum::extract::Json<EcoMessage>| {
                     let known = known_devices.clone();
+                    let bus = event_bus.clone();
                     async move {
                         let msg = body.0;
                         match &msg.msg_type {
                             MessageType::Announcement(a) => {
-                                Self::handle_announcement(&known, a, msg.sender_id.clone()).await;
+                                Self::handle_announcement(&known, a, &msg.sender_id).await;
+                            }
+                            MessageType::ClipboardSync(payload) => {
+                                let data = crate::eco::ClipboardData {
+                                    content: payload.content.clone(),
+                                    content_type: payload.content_type.clone(),
+                                    content_hash: payload.content_hash.clone(),
+                                    source_device: payload.source_device.clone(),
+                                    timestamp: payload.timestamp,
+                                };
+                                bus.emit(EcoEvent::ClipboardReceived(
+                                    std::sync::Arc::new(data),
+                                    msg.sender_id.clone(),
+                                ));
                             }
                             _ => {}
                         }
-                        axum::Json(serde_json::json!({"status": "ok"}))
+                        axum::Json(EcoMessage::new(
+                            MessageType::Ack,
+                            String::new(),
+                            String::new(),
+                        ))
                     }
                 }
             }));
@@ -142,7 +172,7 @@ impl DeviceDiscovery {
     async fn handle_announcement(
         known_devices: &Arc<RwLock<HashMap<String, DiscoveredDevice>>>,
         announcement: &DeviceAnnouncement,
-        _sender_id: String,
+        _sender_id: &str,
     ) {
         let mut device = EcoDevice::new(announcement.device_name.clone());
         device.id = uuid::Uuid::parse_str(&announcement.device_id).unwrap_or_default();
@@ -156,6 +186,9 @@ impl DeviceDiscovery {
         };
         device.status = DeviceStatus::Online;
         device.public_key = announcement.public_key.clone();
+        if let Ok(ip) = announcement.ip_address.parse::<std::net::IpAddr>() {
+            device.addr = Some(SocketAddr::new(ip, announcement.eco_port));
+        }
         device.touch();
 
         let mut devices = known_devices.write().await;

@@ -10,6 +10,7 @@ mod processor;
 mod voice;
 
 use dioxus::prelude::*;
+use igrisv3::eco;
 use dioxus::desktop::{Config, WindowBuilder};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -229,9 +230,16 @@ async fn run_setup_and_assistant() {
         let _ = setup_handle.await;
 
         // ═══════════════════════════════════════════════════════
-        // STEP 3: INITIALIZE VOICE ASSISTANT
+        // STEP 3: ECOSYSTEM DIALOG (shown in UI)
         // ═══════════════════════════════════════════════════════
-        println!("\n[MIC] STEP 3: VOICE ASSISTANT");
+        if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
+            ui_state.show_ecosystem_dialog = true;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // STEP 4: INITIALIZE VOICE ASSISTANT
+        // ═══════════════════════════════════════════════════════
+        println!("\n[MIC] STEP 4: VOICE ASSISTANT");
         println!("─────────────────────────────────────────────────────\n");
 
         // Now start the voice assistant
@@ -270,6 +278,9 @@ fn App() -> Element {
 
     // Incoming transfer state (for popup)
     let mut pending_transfers = use_signal(|| Vec::<fastswap::PendingTransfer>::new());
+
+    // Ecosystem dialog state
+    let mut show_ecosystem_dialog = use_signal(|| false);
 
     // Note: File sharing is handled by FastSwap (integrated Rust implementation)
 
@@ -341,6 +352,10 @@ fn App() -> Element {
                         ui_state.show_fastswap = false;
                         // Start server on first show
                         spawn(async { fastswap::start_on_demand().await });
+                    }
+                    // Ecosystem dialog trigger
+                    if ui_state.show_ecosystem_dialog && !show_ecosystem_dialog() {
+                        show_ecosystem_dialog.set(true);
                     }
                 }
             }
@@ -447,6 +462,84 @@ fn App() -> Element {
 
         // Presentation Panel (full screen overlay with TTS narration)
         PresentationPanel {}
+
+        // Ecosystem Clipboard Sync Dialog
+        if show_ecosystem_dialog() {
+            div {
+                style: "position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;",
+
+                div {
+                    style: "background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 20px; padding: 40px; max-width: 480px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); text-align: center;",
+                    onclick: move |e| e.stop_propagation(),
+
+                    div {
+                        style: "font-size: 48px; margin-bottom: 16px;",
+                        "📋"
+                    }
+
+                    h2 {
+                        style: "color: #fff; font-size: 22px; margin-bottom: 12px;",
+                        "Enable Clipboard Sync?"
+                    }
+
+                    p {
+                        style: "color: #9ca3af; font-size: 14px; line-height: 1.6; margin-bottom: 8px;",
+                        "Copy text on one device and paste it on another",
+                    }
+                    p {
+                        style: "color: #6b7280; font-size: 13px; line-height: 1.5; margin-bottom: 28px;",
+                        "Works between all your devices on the same local network."
+                    }
+
+                    div {
+                        style: "display: flex; gap: 12px; justify-content: center;",
+
+                        button {
+                            style: "padding: 12px 32px; border-radius: 10px; border: none; background: rgba(255,255,255,0.1); color: #9ca3af; font-size: 15px; cursor: pointer; transition: all 0.2s;",
+                            onmouseenter: move |_| {},
+                            onclick: move |_| {
+                                show_ecosystem_dialog.set(false);
+                                if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
+                                    ui_state.show_ecosystem_dialog = false;
+                                }
+                            },
+                            "No"
+                        }
+
+                        button {
+                            style: "padding: 12px 32px; border-radius: 10px; border: none; background: linear-gradient(135deg, #06b6d4, #3b82f6); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);",
+                            onmouseenter: move |_| {},
+                            onclick: move |_| {
+                                show_ecosystem_dialog.set(false);
+                                if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
+                                    ui_state.show_ecosystem_dialog = false;
+                                }
+                                spawn(async move {
+                                    let pkg_dir = PathBuf::from("./pkg");
+                                    match eco::init_eco_manager(&pkg_dir) {
+                                        Ok(_) => {
+                                            let config_path = pkg_dir.join("ecosystem/ecosystem_config.json");
+                                            if let Some(mut guard) = eco::get_eco_manager() {
+                                                if let Some(ref mut manager) = *guard {
+                                                    manager.enable_clipboard_sync();
+                                                    manager.config_mut().enabled = true;
+                                                    manager.config_mut().save(&config_path);
+                                                }
+                                            }
+                                            let _ = eco::start_eco_manager();
+                                        }
+                                        Err(e) => {
+                                            eprintln!("[ECO] Failed to initialize: {}", e);
+                                        }
+                                    }
+                                });
+                            },
+                            "Yes"
+                        }
+                    }
+                }
+            }
+        }
 
         // Incoming Transfer Popup (highest z-index, appears on top of everything)
         IncomingTransferPopup { pending_transfers }

@@ -37,11 +37,13 @@ pub struct DeviceAnnouncement {
     pub capabilities: HashMap<String, bool>,
     pub public_key: Option<String>,
     pub eco_port: u16,
+    pub ip_address: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClipboardSyncPayload {
     pub content_hash: String,
+    pub content: String,
     pub content_type: String,
     pub source_device: String,
     pub timestamp: i64,
