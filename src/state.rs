@@ -15,6 +15,7 @@ pub(crate) static UI_PANEL_STATE: once_cell::sync::Lazy<Arc<Mutex<UiPanelState>>
 pub(crate) struct UiPanelState {
     pub(crate) show_fastswap: bool,
     pub(crate) show_ecosystem_dialog: bool,
+    pub(crate) show_notifications: bool,
 }
 
 #[derive(Clone, Debug)]

@@ -1,7 +1,7 @@
 use crate::eco::constants::*;
 use crate::eco::device::{Capabilities, DeviceStatus, EcoDevice};
 use crate::eco::events::{EcoEvent, EventBus};
-use crate::eco::protocol::ClipboardSyncPayload;
+use crate::eco::protocol::{ClipboardSyncPayload, NotificationSyncPayload, NotificationReplyPayload};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -63,6 +63,28 @@ impl DeviceDiscovery {
                             std::sync::Arc::new(data),
                             String::new(),
                         ));
+                        axum::Json(serde_json::json!({"status": "ok"}))
+                    }
+                }
+            }))
+            .route("/api/ecosystem/v1/notification/sync", axum::routing::post({
+                let bus = event_bus.clone();
+                move |body: axum::extract::Json<NotificationSyncPayload>| {
+                    let bus = bus.clone();
+                    async move {
+                        let payload = body.0;
+                        bus.emit(EcoEvent::NotificationReceived(payload));
+                        axum::Json(serde_json::json!({"status": "ok"}))
+                    }
+                }
+            }))
+            .route("/api/ecosystem/v1/notification/reply", axum::routing::post({
+                let bus = event_bus.clone();
+                move |body: axum::extract::Json<NotificationReplyPayload>| {
+                    let bus = bus.clone();
+                    async move {
+                        let payload = body.0;
+                        bus.emit(EcoEvent::NotificationReplyReceived(payload));
                         axum::Json(serde_json::json!({"status": "ok"}))
                     }
                 }

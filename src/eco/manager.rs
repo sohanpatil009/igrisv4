@@ -6,6 +6,7 @@ use crate::eco::device::{Capabilities, EcoDevice};
 use crate::eco::discovery::DeviceDiscovery;
 use crate::eco::errors::{EcoError, EcoResult};
 use crate::eco::events::{EcoEvent, EventBus};
+use crate::eco::notifications::NotificationManager;
 use crate::eco::permissions::EcoPermissions;
 use crate::eco::storage::EcoStorage;
 use crate::eco::sync::SyncManager;
@@ -27,6 +28,7 @@ pub struct EcoManager {
     permissions: Option<Arc<EcoPermissions>>,
     crypto: Option<EcoCrypto>,
     sync: Option<Arc<SyncManager>>,
+    notifications: Option<Arc<NotificationManager>>,
     eco_port: u16,
     initialized: bool,
     running: bool,
@@ -56,6 +58,7 @@ impl EcoManager {
             permissions: None,
             crypto: None,
             sync: None,
+            notifications: None,
             eco_port: DEFAULT_ECO_PORT,
             initialized: false,
             running: false,
@@ -165,12 +168,23 @@ impl EcoManager {
         // ---- Sync manager (sends clipboard changes to peers via HTTPS) ----
         let sync = Arc::new(SyncManager::new(
             self.event_bus.clone(),
-            transport,
-            known_devices,
+            transport.clone(),
+            known_devices.clone(),
             self.local_device.clone(),
         ));
         let _ = sync.start().await;
         self.sync = Some(sync);
+
+        // ---- Notification manager (broadcasts & receives notifications) ----
+        let notification_manager = Arc::new(NotificationManager::new(
+            self.event_bus.clone(),
+            transport,
+            known_devices,
+            self.storage.clone(),
+        ));
+        crate::eco::notifications::init_manager(notification_manager.clone());
+        notification_manager.start();
+        self.notifications = Some(notification_manager);
 
         // ---- Apply received clipboard data to local clipboard ----
         {

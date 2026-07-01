@@ -7,6 +7,7 @@ pub mod discovery;
 pub mod errors;
 pub mod events;
 pub mod manager;
+pub mod notifications;
 pub mod permissions;
 pub mod protocol;
 pub mod storage;

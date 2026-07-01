@@ -26,7 +26,7 @@ use igrisv3::config::CONFIG;
 use igrisv3::setup_manager::gui::{is_setup_complete, SetupGui};
 use igrisv3::setup_manager::{SetupManager, SetupUI};
 use igrisv3::utils::shared_memory::init_shared_memory;
-use igrisv3::ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup};
+use igrisv3::ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup, NotificationPanel};
 use igrisv3::commands::ffmpeg_camera::{CameraPanelState, CAMERA_PANEL_STATE};
 
 use crate::state::*;
@@ -282,6 +282,10 @@ fn App() -> Element {
     // Ecosystem dialog state
     let mut show_ecosystem_dialog = use_signal(|| false);
 
+    // Notification panel state
+    let mut show_notifications = use_signal(|| false);
+    let mut unread_notifications = use_signal(|| 0usize);
+
     // Note: File sharing is handled by FastSwap (integrated Rust implementation)
 
     use_effect(move || {
@@ -357,7 +361,14 @@ fn App() -> Element {
                     if ui_state.show_ecosystem_dialog && !show_ecosystem_dialog() {
                         show_ecosystem_dialog.set(true);
                     }
+                    // Notification panel trigger
+                    if ui_state.show_notifications && !show_notifications() {
+                        show_notifications.set(true);
+                        ui_state.show_notifications = false;
+                    }
                 }
+                let list = crate::eco::notifications::get_notification_list();
+                unread_notifications.set(list.iter().filter(|n| !n.read).count());
             }
         });
     });
@@ -423,6 +434,12 @@ fn App() -> Element {
 
         // Settings Panel (modal)
         SettingsPanel { is_open: show_settings }
+
+        // Notification Panel (modal)
+        NotificationPanel {
+            show: show_notifications(),
+            on_close: move |_| show_notifications.set(false),
+        }
 
         // FastSwap Panel (modal)
         if show_fastswap() {
@@ -576,6 +593,23 @@ fn App() -> Element {
                 }
 
                 // Menu Button (top right)
+                div { style: "position: fixed; top: clamp(12px, 3vh, 24px); right: clamp(120px, 15vw, 180px); z-index: 50; display: flex; align-items: center; gap: 8px;",
+                    button {
+                        style: format!(
+                            "background: none; border: 1px solid {}; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: all 0.2s; color: {}; font-size: 16px;",
+                            if unread_notifications() > 0 { "#06b6d4" } else { "rgba(255,255,255,0.2)" },
+                            if unread_notifications() > 0 { "#06b6d4" } else { "#6b7280" },
+                        ),
+                        onmouseenter: move |_| {},
+                        onclick: move |_| show_notifications.set(true),
+                        "🔔"
+                        if unread_notifications() > 0 {
+                            div { style: "position: absolute; top: -4px; right: -4px; background: #ef4444; color: #fff; font-size: 10px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;",
+                                if unread_notifications() > 9 { "9+" } else { "{unread_notifications()}" }
+                            }
+                        }
+                    }
+                }
                 MenuButton {
                     settings_open: show_settings,
                     fastswap_open: show_fastswap

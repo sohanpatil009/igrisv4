@@ -45,3 +45,9 @@ pub const PEER_REQUEST_TIMEOUT_SECS: u64 = 5;
 
 /// Maximum number of devices to track simultaneously
 pub const MAX_TRACKED_DEVICES: usize = 50;
+
+/// Maximum number of notification history entries to keep
+pub const NOTIFICATION_HISTORY_MAX: usize = 100;
+
+/// Notification history file name
+pub const NOTIFICATION_HISTORY_FILE: &str = "notification_history.json";
