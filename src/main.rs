@@ -510,6 +510,7 @@ fn App() -> Element {
                             style: "padding: 12px 32px; border-radius: 10px; border: none; background: linear-gradient(135deg, #06b6d4, #3b82f6); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);",
                             onmouseenter: move |_| {},
                             onclick: move |_| {
+                                println!("[ECO] User clicked YES — initializing clipboard sync...");
                                 show_ecosystem_dialog.set(false);
                                 if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
                                     ui_state.show_ecosystem_dialog = false;
@@ -518,18 +519,23 @@ fn App() -> Element {
                                     let pkg_dir = PathBuf::from("./pkg");
                                     match eco::init_eco_manager(&pkg_dir) {
                                         Ok(_) => {
+                                            println!("[ECO] Manager initialized");
                                             let config_path = pkg_dir.join("ecosystem/ecosystem_config.json");
                                             if let Some(mut guard) = eco::get_eco_manager() {
                                                 if let Some(ref mut manager) = *guard {
                                                     manager.enable_clipboard_sync();
                                                     manager.config_mut().enabled = true;
                                                     manager.config_mut().save(&config_path);
+                                                    println!("[ECO] Config saved (clipboard_sync=true)");
                                                 }
                                             }
-                                            let _ = eco::start_eco_manager();
+                                            match eco::start_eco_manager() {
+                                                Ok(_) => println!("[ECO] Ecosystem started successfully"),
+                                                Err(e) => eprintln!("[ECO] Start failed: {}", e),
+                                            }
                                         }
                                         Err(e) => {
-                                            eprintln!("[ECO] Failed to initialize: {}", e);
+                                            eprintln!("[ECO] Init failed: {}", e);
                                         }
                                     }
                                 });
