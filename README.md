@@ -43,6 +43,14 @@ A voice-activated AI assistant built with **Rust** and **Dioxus 0.7**. IGRIS pro
 - **System Info** — Query OS version, memory, CPU, public IP, and uptime
 - **Clipboard** — Read and write clipboard contents
 
+### Ecosystem Clipboard Sync
+- **Text-Only Clipboard Sync** — Automatically syncs clipboard text across LAN devices
+- **Separate TLS Layer** — Uses dedicated ports 53327/53328 (HTTP/TLS), independent of FastSwap
+- **HTTPS Subnet Discovery** — Scans local subnet (1–254) for peer ecosystem instances on port 53328
+- **Auto-Start** — Initializes silently on app boot, no user interaction required
+- **No External Dependencies** — Uses built-in macOS `pbpaste`/`pbcopy` (Linux: `xclip`, Windows: `powershell`)
+- **Single Binary** — Ecosystem runs inside the main process; no standalone binary
+
 ### FastSwap File Transfer
 - **TLS-Encrypted** — End-to-end encryption via self-signed TLS (port 53318)
 - **Cross-Platform Sharing** — LocalSend v2.0 protocol compatible
@@ -150,7 +158,26 @@ src/
 │   ├── app_launcher.rs       # OS-specific app launch/close (macOS `open -a`, Windows `start`, Linux)
 │   ├── file_system.rs        # File operations abstraction
 │   ├── process_builder.rs    # Cross-platform command builder
-│   └── system_control.rs     # Volume, brightness, WiFi, Bluetooth, power
+│   ├── system_control.rs     # Volume, brightness, WiFi, Bluetooth, power
+│   └── ecosystem/            # Platform clipboard abstraction
+│       ├── mod.rs            # PlatformClipboard trait (text-only)
+│       └── macos.rs          # macOS clipboard via pbpaste/pbcopy
+├── eco/                       # Ecosystem clipboard sync module
+│   ├── mod.rs                # Module exports
+│   ├── manager.rs            # EcoManager lifecycle (init, start, stop)
+│   ├── discovery.rs          # HTTP server (53327) + HTTPS subnet scan (53328)
+│   ├── transport.rs          # HTTPS clipboard push to peers
+│   ├── protocol.rs           # ClipboardSyncPayload (text-only)
+│   ├── sync.rs               # SyncManager — clipboard broadcast
+│   ├── clipboard.rs          # ClipboardManager — polling + diff
+│   ├── storage.rs            # ClipboardEntry storage
+│   ├── events.rs             # ClipboardChanged, ClipboardReceived, ClipboardApplied
+│   ├── device.rs             # Device identity
+│   ├── config.rs             # Ecosystem configuration
+│   ├── constants.rs          # Ports, timeouts
+│   ├── crypto.rs             # TLS helpers
+│   ├── permissions.rs        # Permission checks
+│   └── errors.rs             # Error types
 ├── setup_manager/
 │   ├── mod.rs                # Setup orchestrator, uninstall, verification
 │   ├── downloader.rs         # Concurrent model downloads with progress
@@ -211,7 +238,7 @@ Audio → VAD (FFT spectral) ─────→┤  Parakeet ASR (gRPC) → NIM 
 - macOS 10.13+, Windows 10+, or Linux (x86_64)
 - 4 GB RAM (8 GB recommended)
 - Microphone access
-- Network access for FastSwap (port 53318 for TLS, port 53317 for HTTP fallback)
+- Network access for FastSwap (port 53318 for TLS, port 53317 for HTTP fallback) and Ecosystem clipboard sync (ports 53327/53328 for HTTP/TLS)
 - *(Optional)* NVIDIA API key (nvapi-...) for online mode
 
 ### Build & Run
@@ -440,6 +467,8 @@ RUST_LOG=igrisv3=debug cargo run
 | Volume/Brightness not working | macOS: System Settings → Privacy → Automation |
 | Alarm not triggering | Background scheduler checks every 10 seconds |
 | FastSwap not finding devices | Ensure devices are on the same network subnet, allow port 53318 (TLS) in firewall |
+| Clipboard sync not finding peers | Ensure devices are on the same subnet and port 53328 (TLS) is allowed in firewall |
+| Clipboard not syncing | Check that both devices have ecosystem running (auto-starts on boot); sync is text-only |
 | espeak-ng-data not found | Install espeak-ng: `brew install espeak-ng` (macOS) |
 | Online mode not working | Check `NVIDIA_API_KEY` is set in `.env`; verify key is valid for Parakeet + NIM |
 | Online mode not auto-enabling | IGRIS checks internet at startup — if no connectivity or missing API key, stays offline. Check `.env` and internet connection |
@@ -483,6 +512,8 @@ MIT
 - [x] Online reasoning timeout (15s) with fallback to offline
 - [x] On-demand NLU loading when switching from online to offline
 - [x] Automatic offline switch after 3 consecutive online failures
+- [x] Clipboard sync (LAN, text-only, auto-discovered)
+- [x] Notification sync (removed — not needed)
 - [ ] Voice-activated file sharing
 - [ ] Transfer history persistence
 - [ ] Multi-language support
