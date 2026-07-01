@@ -96,6 +96,14 @@ impl ReminderManager {
     pub fn list_reminders(&self) -> Vec<Reminder> {
         self.reminders.lock().unwrap().values().cloned().collect()
     }
+
+    pub fn remove_alarm(&self, id: u32) -> bool {
+        self.alarms.lock().unwrap().remove(&id).is_some()
+    }
+
+    pub fn remove_reminder(&self, id: u32) -> bool {
+        self.reminders.lock().unwrap().remove(&id).is_some()
+    }
     
     pub fn check_and_trigger(&self) {
         let now = Local::now();
