@@ -63,6 +63,8 @@ impl ClipboardManager {
                     continue;
                 }
 
+                println!("[ECO] Clipboard changed: hash={}", &hash[..16]);
+
                 let data = ClipboardData {
                     content: text.clone(),
                     content_type: "text/plain".to_string(),

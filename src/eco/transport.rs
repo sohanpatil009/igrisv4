@@ -1,6 +1,6 @@
 use crate::eco::constants::*;
 use crate::eco::errors::{EcoError, EcoResult};
-use crate::eco::protocol::EcoMessage;
+use crate::eco::protocol::ClipboardSyncPayload;
 use std::net::SocketAddr;
 
 pub struct EcoTransport {
@@ -17,15 +17,16 @@ impl EcoTransport {
         Self { http_client }
     }
 
-    pub async fn send_message(
+    /// Send clipboard payload to a peer via HTTPS (FastSwap TLS port).
+    pub async fn send_clipboard(
         &self,
         addr: &SocketAddr,
-        message: &EcoMessage,
-    ) -> EcoResult<EcoMessage> {
-        let url = format!("http://{}/api/ecosystem/v1/message", addr);
+        payload: &ClipboardSyncPayload,
+    ) -> EcoResult<()> {
+        let url = format!("https://{}/api/ecosystem/v1/clipboard/sync", addr);
         let resp = self.http_client
             .post(&url)
-            .json(message)
+            .json(payload)
             .send()
             .await
             .map_err(|e| EcoError::Transport(e.to_string()))?;
@@ -36,42 +37,6 @@ impl EcoTransport {
             )));
         }
 
-        resp.json().await.map_err(|e| EcoError::Transport(e.to_string()))
-    }
-
-    pub async fn fetch_clipboard(
-        &self,
-        addr: &SocketAddr,
-        content_hash: &str,
-    ) -> EcoResult<String> {
-        let url = format!(
-            "http://{}/api/ecosystem/v1/clipboard/{}",
-            addr, content_hash
-        );
-        let resp = self.http_client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| EcoError::Transport(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(EcoError::Transport(format!(
-                "Clipboard fetch returned {}", resp.status()
-            )));
-        }
-
-        resp.text().await.map_err(|e| EcoError::Transport(e.to_string()))
-    }
-
-    pub async fn probe_device(&self, addr: &str, port: u16) -> EcoResult<EcoMessage> {
-        let url = format!("http://{}:{}/api/ecosystem/v1/info", addr, port);
-        let resp = self.http_client
-            .get(&url)
-            .timeout(std::time::Duration::from_secs(2))
-            .send()
-            .await
-            .map_err(|e| EcoError::Transport(e.to_string()))?;
-
-        resp.json().await.map_err(|e| EcoError::Transport(e.to_string()))
+        Ok(())
     }
 }

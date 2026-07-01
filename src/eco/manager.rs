@@ -7,7 +7,6 @@ use crate::eco::discovery::DeviceDiscovery;
 use crate::eco::errors::{EcoError, EcoResult};
 use crate::eco::events::{EcoEvent, EventBus};
 use crate::eco::permissions::EcoPermissions;
-use crate::eco::protocol::EcoMessage;
 use crate::eco::storage::EcoStorage;
 use crate::eco::sync::SyncManager;
 use crate::eco::transport::EcoTransport;
@@ -28,6 +27,7 @@ pub struct EcoManager {
     permissions: Option<Arc<EcoPermissions>>,
     crypto: Option<EcoCrypto>,
     sync: Option<Arc<SyncManager>>,
+    eco_port: u16,
     initialized: bool,
     running: bool,
 }
@@ -56,6 +56,7 @@ impl EcoManager {
             permissions: None,
             crypto: None,
             sync: None,
+            eco_port: DEFAULT_ECO_PORT,
             initialized: false,
             running: false,
         }
@@ -116,57 +117,68 @@ impl EcoManager {
             return Ok(());
         }
 
+        // ---- Bind ecosystem HTTP server port ----
         let mut port = self.config.port;
         let mut bound = false;
-
         for offset in 0..PORT_RANGE {
             let try_port = port + offset;
             let addr: SocketAddr = match format!("0.0.0.0:{}", try_port).parse() {
                 Ok(a) => a,
                 Err(_) => continue,
             };
-
             if tokio::net::TcpListener::bind(addr).await.is_ok() {
                 port = try_port;
                 bound = true;
                 break;
             }
         }
-
         if !bound {
             return Err(EcoError::Transport("Could not bind to any port".to_string()));
         }
+        self.eco_port = port;
 
-        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+        // ---- Start TLS proxy (eco TLS port -> eco HTTP port) ----
+        let tls_cfg = tokio::task::spawn_blocking(|| crate::fastswap::tls::get_or_create_tls_config())
+            .await
+            .map_err(|e| EcoError::Transport(format!("TLS init panicked: {}", e)))?
+            .map_err(|e| EcoError::Transport(format!("TLS init error: {}", e)))?;
+
+        let eco_tls_port = if port == DEFAULT_ECO_PORT { ECO_TLS_PORT } else { port + 1 };
+        let _ = crate::fastswap::network::start_tls_proxy(eco_tls_port, port, tls_cfg.server_config)
+            .await
+            .map_err(|e| EcoError::Transport(format!("TLS proxy error: {}", e)))?;
+
+        // ---- Start ecosystem HTTP server (clipboard endpoint) ----
+        let http_addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         let transport = self.transport.clone();
         let local_device = self.local_device.clone();
 
         let discovery = Arc::new(DeviceDiscovery::new(
-            local_device.clone(),
-            transport,
-            port,
             self.event_bus.clone(),
         ));
-        discovery.start_listener(&addr).await;
-        discovery.start_broadcast().await;
+        discovery.start_server(&http_addr).await;
+        discovery.start_discovery().await;
         discovery.run_cleanup().await;
 
         let known_devices = discovery.get_known_devices();
 
+        // ---- Sync manager (sends clipboard changes to peers via HTTPS) ----
         let sync = Arc::new(SyncManager::new(
             self.event_bus.clone(),
-            self.transport.clone(),
+            transport,
             known_devices,
             self.local_device.clone(),
         ));
         let _ = sync.start().await;
         self.sync = Some(sync);
 
+        // ---- Apply received clipboard data to local clipboard ----
         {
             let event_bus = self.event_bus.clone();
             let manager_ptr = self.clipboard.clone().unwrap();
             event_bus.subscribe(Arc::new(move |event| {
                 if let EcoEvent::ClipboardReceived(data, _from) = event {
+                    println!("[ECO] Applying received clipboard (hash={})", &data.content_hash[..16]);
                     let manager = manager_ptr.clone();
                     tokio::spawn(async move {
                         if let Ok(mut guard) = manager.lock() {
@@ -179,7 +191,11 @@ impl EcoManager {
 
         self.discovery = Some(discovery);
 
+        println!("[ECO] HTTP server on port {}, TLS proxy on port {}", port, eco_tls_port);
+        println!("[ECO] Discovery via HTTPS subnet scan on port {}", eco_tls_port);
+
         if self.config.clipboard_sync {
+            println!("[ECO] Clipboard monitoring ENABLED (polling every 1s)");
             if let Some(clipboard) = &self.clipboard {
                 let cb = clipboard.clone();
                 tokio::spawn(async move {
@@ -191,7 +207,7 @@ impl EcoManager {
         self.running = true;
 
         self.event_bus.emit(EcoEvent::Synced(
-            format!("Ecosystem started on port {}", port)
+            format!("Ecosystem started — HTTP:{} TLS:{}", port, eco_tls_port)
         ));
 
         Ok(())

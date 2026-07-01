@@ -1,6 +1,9 @@
 /// Default TCP port for ecosystem HTTP server
 pub const DEFAULT_ECO_PORT: u16 = 53327;
 
+/// TLS proxy port wrapping the HTTP ecosystem server
+pub const ECO_TLS_PORT: u16 = 53328;
+
 /// Port range to try when binding (port..port+RANGE)
 pub const PORT_RANGE: u16 = 10;
 

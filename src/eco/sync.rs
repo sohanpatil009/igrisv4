@@ -3,7 +3,7 @@ use crate::eco::device::EcoDevice;
 use crate::eco::discovery::DiscoveredDevice;
 use crate::eco::errors::EcoResult;
 use crate::eco::events::{EcoEvent, EventBus};
-use crate::eco::protocol::{ClipboardSyncPayload, EcoMessage, MessageType};
+use crate::eco::protocol::ClipboardSyncPayload;
 use crate::eco::transport::EcoTransport;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -55,18 +55,17 @@ impl SyncManager {
                         source_device: sender_id.clone(),
                         timestamp: chrono::Utc::now().timestamp_millis(),
                     };
-                    let msg = Arc::new(EcoMessage::new(
-                        MessageType::ClipboardSync(payload),
-                        sender_id,
-                        sender_name,
-                    ));
+
+                    let peer_count = peers.iter().filter(|(_, d)| d.device.capabilities.clipboard_sync && d.device.addr.is_some()).count();
+                    println!("[ECO] Broadcasting clipboard to {} peer(s)", peer_count);
 
                     for (_id, discovered) in peers.iter() {
                         if !discovered.device.capabilities.clipboard_sync {
                             continue;
                         }
                         if let Some(addr) = &discovered.device.addr {
-                            let _ = transport.send_message(addr, &msg).await;
+                            println!("[ECO] Sending clipboard to {}", addr);
+                            let _ = transport.send_clipboard(addr, &payload).await;
                         }
                     }
                 });
@@ -78,11 +77,5 @@ impl SyncManager {
     }
 
     pub async fn shutdown(&self) {
-    }
-
-    pub async fn sync_clipboard(&self, data: ClipboardData, _source: EcoDevice) {
-        use crate::eco::events::EcoEvent;
-        let arc = std::sync::Arc::new(data);
-        self.event_bus.emit(EcoEvent::ClipboardReceived(arc, String::new()));
     }
 }
