@@ -60,9 +60,11 @@ pub(crate) fn update_status(status: &str) {
 }
 
 pub(crate) fn add_log(message: &str, level: LogLevel) {
-    let mut state = ASSISTANT_STATE.lock().unwrap();
-    state.logs.push((message.to_string(), level));
-    if state.logs.len() > 100 {
-        state.logs.remove(0);
-    }
+    let prefix = match level {
+        LogLevel::Info => "",
+        LogLevel::Success => "[OK] ",
+        LogLevel::Warning => "[WARN] ",
+        LogLevel::Error => "[ERROR] ",
+    };
+    eprintln!("{}{}", prefix, message);
 }

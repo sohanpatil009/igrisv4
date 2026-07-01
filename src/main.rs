@@ -274,14 +274,7 @@ fn App() -> Element {
     let mut last_command_text = use_signal(|| "Waiting for voice input...".to_string());
     let mut assistant_name = use_signal(|| CONFIG.assistant_name());
     let mut is_igris = use_signal(|| CONFIG.get().personality == config::Personality::Igris);
-    let mut logs_list = use_signal(|| {
-        vec![(
-            format!("Welcome to {} - Your Voice Assistant", CONFIG.assistant_name()),
-            LogLevel::Info,
-        )]
-    });
     let mut apps_list = use_signal(|| Vec::new());
-    let _show_logs = use_signal(|| CONFIG.get().ui.show_logs);
 
     // Search results state
     let mut show_search_results = use_signal(|| false);
@@ -319,7 +312,6 @@ fn App() -> Element {
                     last_command_text.set(state.last_command.clone());
                 }
 
-                logs_list.set(state.logs.clone());
                 apps_list.set(state.running_apps.clone());
 
                 // Update assistant name and personality from config
@@ -376,7 +368,6 @@ fn App() -> Element {
     let setup_progress = setup_in_progress();
     let status = status_text();
     let command = last_command_text();
-    let logs = logs_list();
     let apps = apps_list();
     let show_setup = show_setup_gui();
     let name = assistant_name();
@@ -545,23 +536,7 @@ fn App() -> Element {
                         }
                     }
 
-                    // Status display
-                    div { style: "display: flex; flex-direction: column; align-items: center; gap: clamp(16px, 3vh, 32px); max-width: min(90vw, 800px); width: 100%;",
-                        div { style: "text-align: center;",
-                            div { style: "font-size: clamp(10px, 1.5vw, 12px); letter-spacing: 1px; color: #9ca3af; margin-bottom: clamp(4px, 1vh, 8px); text-transform: uppercase;",
-                                "System Status"
-                            }
-                            h2 {
-                                style: format!(
-                                    "font-size: clamp(18px, 4vw, 32px); font-weight: bold; background: linear-gradient(90deg, {}, {}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: fade-in-out 2s ease-in-out infinite; transition: all 0.5s ease-in-out;",
-                                    primary_color,
-                                    secondary_color,
-                                ),
-                                "{status}"
-                            }
-                        }
-
-                        // Audio wave bars with dynamic colors - responsive
+                    // Audio wave bars with dynamic colors - responsive
                         div { style: "display: flex; align-items: center; justify-content: center; gap: clamp(2px, 0.5vw, 4px); height: clamp(24px, 6vh, 48px);",
                             div {
                                 style: format!(
@@ -614,7 +589,6 @@ fn App() -> Element {
                                 "\"{command}\""
                             }
                         }
-                    }
 
                     // Status indicator dots - responsive
                     div { style: "display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 1vh, 8px);",
@@ -647,34 +621,6 @@ fn App() -> Element {
                                     "width: clamp(8px, 1.5vw, 12px); height: clamp(8px, 1.5vw, 12px); background: {}; border-radius: 50%; animation: blink-3 1.2s ease-in-out infinite 0.4s; transition: background 0.5s ease-in-out;",
                                     primary_color,
                                 ),
-                            }
-                        }
-                    }
-                }
-
-                // Logs Panel - Bottom Right with dynamic border - responsive
-                div {
-                    style: format!(
-                        "position: fixed; bottom: clamp(12px, 3vh, 24px); right: clamp(12px, 3vw, 24px); width: clamp(200px, 35vw, 384px); max-height: clamp(120px, 30vh, 256px); background: rgba(0, 0, 0, 0.8); border: 1px solid rgba({}, 0.4); border-radius: 8px; padding: clamp(8px, 2vh, 16px); backdrop-filter: blur(10px); overflow-y: auto; overflow-x: hidden; z-index: 40; transition: border-color 0.5s ease-in-out;",
-                        accent_rgb,
-                    ),
-                    div { style: "font-size: clamp(10px, 1.5vw, 12px); letter-spacing: 1px; color: #9ca3af; margin-bottom: clamp(6px, 1.5vh, 12px); text-transform: uppercase;",
-                        "System Logs"
-                    }
-                    div { style: "display: flex; flex-direction: column; gap: clamp(4px, 1vh, 8px);",
-                        for (log , level) in logs.iter().rev().take(10) {
-                            div {
-                                style: format!(
-                                    "font-size: clamp(10px, 1.3vw, 12px); color: {}; font-family: monospace; word-break: break-word;",
-                                    match level {
-                                        LogLevel::Success => "#22c55e",
-                                        LogLevel::Error => "#ef4444",
-                                        LogLevel::Warning => "#f59e0b",
-                                        _ => primary_color,
-                                    },
-                                ),
-                                span { style: "color: #4b5563; margin-right: 4px;", "> " }
-                                "{log}"
                             }
                         }
                     }

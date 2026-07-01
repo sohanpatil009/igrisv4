@@ -19,7 +19,6 @@ pub fn SettingsPanel(is_open: Signal<bool>) -> Element {
     let mut sensitivity = use_signal(|| (config.recognition.sensitivity * 100.0) as i32);
     let mut volume = use_signal(|| (config.tts.volume * 100.0) as i32);
     let mut speed = use_signal(|| (config.tts.speed * 100.0) as i32);
-    let mut show_logs = use_signal(|| config.ui.show_logs);
     let mut theme = use_signal(|| config.ui.theme.clone());
     let mut save_status = use_signal(|| String::new());
 
@@ -247,28 +246,6 @@ pub fn SettingsPanel(is_open: Signal<bool>) -> Element {
                             "💜 Cyber"
                         }
                     }
-                    
-                    // Show logs toggle
-                    div {
-                        style: "display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;",
-                        
-                        span { style: "color: #e5e7eb; font-size: 14px;", "Show Logs Panel" }
-                        
-                        button {
-                            style: format!(
-                                "width: 48px; height: 26px; border-radius: 13px; border: none; cursor: pointer; position: relative; transition: all 0.2s; background: {};",
-                                if show_logs() { "#06b6d4" } else { "#374151" }
-                            ),
-                            onclick: move |_| show_logs.set(!show_logs()),
-                            
-                            div {
-                                style: format!(
-                                    "width: 20px; height: 20px; border-radius: 50%; background: #fff; position: absolute; top: 3px; transition: all 0.2s; left: {};",
-                                    if show_logs() { "25px" } else { "3px" }
-                                ),
-                            }
-                        }
-                    }
                 }
 
                 // Save status message
@@ -293,7 +270,6 @@ pub fn SettingsPanel(is_open: Signal<bool>) -> Element {
                             sensitivity.set((config.recognition.sensitivity * 100.0) as i32);
                             volume.set((config.tts.volume * 100.0) as i32);
                             speed.set((config.tts.speed * 100.0) as i32);
-                            show_logs.set(config.ui.show_logs);
                             theme.set(config.ui.theme);
                             save_status.set("Reset to defaults!".to_string());
                         },
@@ -309,7 +285,6 @@ pub fn SettingsPanel(is_open: Signal<bool>) -> Element {
                                 c.recognition.sensitivity = sensitivity() as f32 / 100.0;
                                 c.tts.volume = volume() as f32 / 100.0;
                                 c.tts.speed = speed() as f32 / 100.0;
-                                c.ui.show_logs = show_logs();
                                 c.ui.theme = theme();
                             });
                             
