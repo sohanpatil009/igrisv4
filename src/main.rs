@@ -514,7 +514,7 @@ fn App() -> Element {
                                 if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
                                     ui_state.show_ecosystem_dialog = false;
                                 }
-                                spawn(async move {
+                                std::thread::spawn(|| {
                                     let pkg_dir = PathBuf::from("./pkg");
                                     match eco::init_eco_manager(&pkg_dir) {
                                         Ok(_) => {
