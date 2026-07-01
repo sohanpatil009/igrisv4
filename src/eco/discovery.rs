@@ -121,7 +121,6 @@ impl DeviceDiscovery {
             }
             _ => return Vec::new(),
         };
-
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(2))
             .danger_accept_invalid_certs(true)
@@ -133,6 +132,11 @@ impl DeviceDiscovery {
 
         for i in 1..=254 {
             let ip = format!("{}.{}", subnet, i);
+            if let Ok(probe_ip) = ip.parse::<std::net::IpAddr>() {
+                if probe_ip == *local_ip {
+                    continue;
+                }
+            }
             let client = client.clone();
             let task = tokio::spawn(async move {
                 let url = format!("https://{}:{}/api/ecosystem/v1/info", ip, ECO_TLS_PORT);
