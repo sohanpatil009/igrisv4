@@ -3,7 +3,6 @@ use crate::eco::errors::{EcoError, EcoResult};
 use crate::eco::events::{EcoEvent, EventBus};
 use crate::eco::storage::{ClipboardEntry, EcoStorage};
 use crate::platform::ecosystem::PlatformClipboard;
-use base64::Engine;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -14,7 +13,6 @@ pub struct ClipboardData {
     pub content_hash: String,
     pub source_device: String,
     pub timestamp: i64,
-    pub image_data: Option<String>,
 }
 
 pub struct ClipboardManager {
@@ -23,7 +21,6 @@ pub struct ClipboardManager {
     storage: Arc<std::sync::Mutex<EcoStorage>>,
     last_content_hash: Option<String>,
     last_applied_hash: Option<String>,
-    last_image_hash: Option<String>,
 }
 
 impl ClipboardManager {
@@ -38,7 +35,6 @@ impl ClipboardManager {
             storage,
             last_content_hash: None,
             last_applied_hash: None,
-            last_image_hash: None,
         }
     }
 
@@ -48,127 +44,67 @@ impl ClipboardManager {
         );
         loop {
             interval.tick().await;
-            let (text_event, image_event) = {
+            let event = {
                 let mut guard = match manager.lock() {
                     Ok(g) => g,
                     Err(_) => continue,
                 };
+                let text = match guard.platform.get_text() {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                if text.is_empty() { continue; }
+                let hash = hash_content(&text);
 
-                let mut text_event = None;
-                let mut image_event = None;
+                let is_own_change = Some(&hash) == guard.last_applied_hash.as_ref();
+                let is_unchanged = Some(&hash) == guard.last_content_hash.as_ref();
 
-                // Check text clipboard
-                if let Ok(text) = guard.platform.get_text() {
-                    if !text.is_empty() {
-                        let hash = hash_content(&text);
-                        let is_own_change = Some(&hash) == guard.last_applied_hash.as_ref();
-                        let is_unchanged = Some(&hash) == guard.last_content_hash.as_ref();
-                        if !is_own_change && !is_unchanged {
-                            println!("[ECO] Clipboard text changed: hash={}", &hash[..16]);
-
-                            let data = ClipboardData {
-                                content: text.clone(),
-                                content_type: "text/plain".to_string(),
-                                content_hash: hash.clone(),
-                                source_device: String::new(),
-                                timestamp: chrono::Utc::now().timestamp_millis(),
-                                image_data: None,
-                            };
-
-                            let entry = ClipboardEntry {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                content: text,
-                                content_type: "text/plain".to_string(),
-                                source_device: String::new(),
-                                timestamp: chrono::Utc::now().timestamp_millis(),
-                                content_hash: hash.clone(),
-                                image_data: None,
-                            };
-
-                            if let Ok(mut storage) = guard.storage.lock() {
-                                let _ = storage.add_clipboard_entry(entry);
-                            }
-
-                            guard.last_content_hash = Some(hash);
-                            text_event = Some(EcoEvent::ClipboardChanged(Arc::new(data)));
-                        }
-                    }
+                if is_own_change || is_unchanged {
+                    continue;
                 }
 
-                // Check image clipboard
-                if let Ok(Some(image_bytes)) = guard.platform.get_image() {
-                    let image_hash = hash_bytes(&image_bytes);
-                    let is_own_change = Some(&image_hash) == guard.last_applied_hash.as_ref();
-                    let is_unchanged = Some(&image_hash) == guard.last_image_hash.as_ref();
-                    if !is_own_change && !is_unchanged {
-                        println!("[ECO] Clipboard image changed: hash={}", &image_hash[..16]);
+                println!("[ECO] Clipboard changed: hash={}", &hash[..16]);
 
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+                let data = ClipboardData {
+                    content: text.clone(),
+                    content_type: "text/plain".to_string(),
+                    content_hash: hash.clone(),
+                    source_device: String::new(),
+                    timestamp: chrono::Utc::now().timestamp_millis(),
+                };
 
-                        let data = ClipboardData {
-                            content: String::new(),
-                            content_type: "image/png".to_string(),
-                            content_hash: image_hash.clone(),
-                            source_device: String::new(),
-                            timestamp: chrono::Utc::now().timestamp_millis(),
-                            image_data: Some(b64.clone()),
-                        };
+                let entry = ClipboardEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    content: text,
+                    content_type: "text/plain".to_string(),
+                    source_device: String::new(),
+                    timestamp: chrono::Utc::now().timestamp_millis(),
+                    content_hash: hash.clone(),
+                };
 
-                        let entry = ClipboardEntry {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            content: String::new(),
-                            content_type: "image/png".to_string(),
-                            source_device: String::new(),
-                            timestamp: chrono::Utc::now().timestamp_millis(),
-                            content_hash: image_hash.clone(),
-                            image_data: Some(b64),
-                        };
-
-                        if let Ok(mut storage) = guard.storage.lock() {
-                            let _ = storage.add_clipboard_entry(entry);
-                        }
-
-                        guard.last_image_hash = Some(image_hash);
-                        image_event = Some(EcoEvent::ClipboardChanged(Arc::new(data)));
-                    }
+                if let Ok(mut storage) = guard.storage.lock() {
+                    let _ = storage.add_clipboard_entry(entry);
                 }
 
-                (text_event, image_event)
+                guard.last_content_hash = Some(hash);
+                let event = EcoEvent::ClipboardChanged(Arc::new(data));
+                event
             };
-
             let bus = manager.lock().ok().map(|g| g.event_bus.clone());
             if let Some(bus) = bus {
-                if let Some(ev) = text_event {
-                    bus.emit(ev);
-                }
-                if let Some(ev) = image_event {
-                    bus.emit(ev);
-                }
+                bus.emit(event);
             }
         }
     }
 
     pub fn apply_clipboard(&mut self, data: &ClipboardData) -> EcoResult<()> {
-        if self.last_content_hash.as_ref() == Some(&data.content_hash)
-            || self.last_image_hash.as_ref() == Some(&data.content_hash)
-        {
+        if self.last_content_hash.as_ref() == Some(&data.content_hash) {
             return Ok(());
         }
 
-        if data.content_type.starts_with("image/") {
-            if let Some(b64) = &data.image_data {
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(b64)
-                    .map_err(|e| EcoError::Clipboard(e.to_string()))?;
-                self.platform.set_image(&bytes)?;
-                self.last_applied_hash = Some(data.content_hash.clone());
-                self.last_image_hash = Some(data.content_hash.clone());
-            }
-        } else {
-            self.platform.set_text(&data.content)?;
-            self.last_applied_hash = Some(data.content_hash.clone());
-            self.last_content_hash = Some(data.content_hash.clone());
-        }
+        self.platform.set_text(&data.content)?;
+        self.last_applied_hash = Some(data.content_hash.clone());
+        self.last_content_hash = Some(data.content_hash.clone());
 
         let arc = Arc::new(data.clone());
         self.event_bus.emit(EcoEvent::ClipboardApplied(arc));
@@ -183,11 +119,5 @@ impl ClipboardManager {
 pub fn hash_content(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-pub fn hash_bytes(content: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content);
     format!("{:x}", hasher.finalize())
 }

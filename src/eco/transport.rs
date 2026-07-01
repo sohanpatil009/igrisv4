@@ -1,6 +1,6 @@
 use crate::eco::constants::*;
 use crate::eco::errors::{EcoError, EcoResult};
-use crate::eco::protocol::{ClipboardSyncPayload, NotificationSyncPayload, NotificationReplyPayload};
+use crate::eco::protocol::ClipboardSyncPayload;
 use std::net::SocketAddr;
 
 pub struct EcoTransport {
@@ -24,52 +24,6 @@ impl EcoTransport {
         payload: &ClipboardSyncPayload,
     ) -> EcoResult<()> {
         let url = format!("https://{}/api/ecosystem/v1/clipboard/sync", addr);
-        let resp = self.http_client
-            .post(&url)
-            .json(payload)
-            .send()
-            .await
-            .map_err(|e| EcoError::Transport(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(EcoError::Transport(format!(
-                "Peer returned status {}", resp.status()
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Send notification to a peer via HTTPS.
-    pub async fn send_notification(
-        &self,
-        addr: &SocketAddr,
-        payload: &NotificationSyncPayload,
-    ) -> EcoResult<()> {
-        let url = format!("https://{}/api/ecosystem/v1/notification/sync", addr);
-        let resp = self.http_client
-            .post(&url)
-            .json(payload)
-            .send()
-            .await
-            .map_err(|e| EcoError::Transport(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(EcoError::Transport(format!(
-                "Peer returned status {}", resp.status()
-            )));
-        }
-
-        Ok(())
-    }
-
-    /// Send notification reply to a peer via HTTPS.
-    pub async fn send_notification_reply(
-        &self,
-        addr: &SocketAddr,
-        payload: &NotificationReplyPayload,
-    ) -> EcoResult<()> {
-        let url = format!("https://{}/api/ecosystem/v1/notification/reply", addr);
         let resp = self.http_client
             .post(&url)
             .json(payload)

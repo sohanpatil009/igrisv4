@@ -1,6 +1,5 @@
 use crate::eco::clipboard::ClipboardData;
 use crate::eco::device::EcoDevice;
-use crate::eco::protocol::{NotificationSyncPayload, NotificationReplyPayload};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -14,9 +13,6 @@ pub enum EcoEvent {
     ClipboardChanged(Arc<ClipboardData>),
     ClipboardReceived(Arc<ClipboardData>, String),
     ClipboardApplied(Arc<ClipboardData>),
-
-    NotificationReceived(NotificationSyncPayload),
-    NotificationReplyReceived(NotificationReplyPayload),
 
     PairingRequest(Arc<EcoDevice>),
     PairingAccepted(Arc<EcoDevice>),

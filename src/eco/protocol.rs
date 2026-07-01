@@ -23,8 +23,6 @@ pub enum MessageType {
     ClipboardPullResponse(ClipboardPullResponse),
     PairingRequest(PairingPayload),
     PairingResponse(PairingPayload),
-    NotificationSync(NotificationSyncPayload),
-    NotificationReply(NotificationReplyPayload),
     Heartbeat,
     Ack,
 }
@@ -49,7 +47,6 @@ pub struct ClipboardSyncPayload {
     pub content_type: String,
     pub source_device: String,
     pub timestamp: i64,
-    pub image_data: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,29 +69,6 @@ pub struct PairingPayload {
     pub public_key: Option<String>,
     pub accepted: bool,
     pub message: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NotificationSyncPayload {
-    pub notification_id: String,
-    pub app_name: String,
-    pub title: String,
-    pub body: String,
-    pub source_device: String,
-    pub source_device_name: String,
-    pub timestamp: i64,
-    pub reply_allowed: bool,
-    pub reply_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NotificationReplyPayload {
-    pub notification_id: String,
-    pub reply_id: String,
-    pub message: String,
-    pub target_device: String,
-    pub target_device_name: String,
-    pub timestamp: i64,
 }
 
 impl EcoMessage {

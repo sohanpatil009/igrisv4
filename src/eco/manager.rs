@@ -6,7 +6,6 @@ use crate::eco::device::{Capabilities, EcoDevice};
 use crate::eco::discovery::DeviceDiscovery;
 use crate::eco::errors::{EcoError, EcoResult};
 use crate::eco::events::{EcoEvent, EventBus};
-use crate::eco::notifications::NotificationManager;
 use crate::eco::permissions::EcoPermissions;
 use crate::eco::storage::EcoStorage;
 use crate::eco::sync::SyncManager;
@@ -28,7 +27,6 @@ pub struct EcoManager {
     permissions: Option<Arc<EcoPermissions>>,
     crypto: Option<EcoCrypto>,
     sync: Option<Arc<SyncManager>>,
-    notifications: Option<Arc<NotificationManager>>,
     eco_port: u16,
     initialized: bool,
     running: bool,
@@ -58,7 +56,6 @@ impl EcoManager {
             permissions: None,
             crypto: None,
             sync: None,
-            notifications: None,
             eco_port: DEFAULT_ECO_PORT,
             initialized: false,
             running: false,
@@ -174,17 +171,6 @@ impl EcoManager {
         ));
         let _ = sync.start().await;
         self.sync = Some(sync);
-
-        // ---- Notification manager (broadcasts & receives notifications) ----
-        let notification_manager = Arc::new(NotificationManager::new(
-            self.event_bus.clone(),
-            transport,
-            known_devices,
-            self.storage.clone(),
-        ));
-        crate::eco::notifications::init_manager(notification_manager.clone());
-        notification_manager.start();
-        self.notifications = Some(notification_manager);
 
         // ---- Apply received clipboard data to local clipboard ----
         {
@@ -306,6 +292,26 @@ pub fn start_eco_manager() -> EcoResult<()> {
         let runtime = tokio::runtime::Runtime::new()
             .map_err(|e| EcoError::Transport(e.to_string()))?;
         runtime.block_on(manager.start())?;
+        Ok(())
+    } else {
+        Err(EcoError::NotInitialized)
+    }
+}
+
+pub async fn init_eco_manager_async(pkg_dir: &PathBuf) -> EcoResult<()> {
+    let mut manager = EcoManager::new(pkg_dir);
+    manager.initialize(pkg_dir).await?;
+    let mut guard = ECO_MANAGER.lock()
+        .map_err(|_| EcoError::Transport("Lock failed".to_string()))?;
+    *guard = Some(manager);
+    Ok(())
+}
+
+pub async fn start_eco_manager_async() -> EcoResult<()> {
+    let mut guard = ECO_MANAGER.lock()
+        .map_err(|_| EcoError::Transport("Lock failed".to_string()))?;
+    if let Some(ref mut manager) = *guard {
+        manager.start().await?;
         Ok(())
     } else {
         Err(EcoError::NotInitialized)

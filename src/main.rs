@@ -26,7 +26,7 @@ use igrisv3::config::CONFIG;
 use igrisv3::setup_manager::gui::{is_setup_complete, SetupGui};
 use igrisv3::setup_manager::{SetupManager, SetupUI};
 use igrisv3::utils::shared_memory::init_shared_memory;
-use igrisv3::ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup, NotificationPanel};
+use igrisv3::ui::{SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem, CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup};
 use igrisv3::commands::ffmpeg_camera::{CameraPanelState, CAMERA_PANEL_STATE};
 
 use crate::state::*;
@@ -230,10 +230,26 @@ async fn run_setup_and_assistant() {
         let _ = setup_handle.await;
 
         // ═══════════════════════════════════════════════════════
-        // STEP 3: ECOSYSTEM DIALOG (shown in UI)
+        // STEP 3: ECOSYSTEM (clipboard sync)
         // ═══════════════════════════════════════════════════════
-        if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
-            ui_state.show_ecosystem_dialog = true;
+        println!("\n[ECO] Initializing clipboard sync...");
+        let pkg_dir = PathBuf::from("./pkg");
+        match eco::init_eco_manager_async(&pkg_dir).await {
+            Ok(_) => {
+                let config_path = pkg_dir.join("ecosystem/ecosystem_config.json");
+                if let Some(mut guard) = eco::get_eco_manager() {
+                    if let Some(ref mut manager) = *guard {
+                        manager.enable_clipboard_sync();
+                        manager.config_mut().enabled = true;
+                        manager.config_mut().save(&config_path);
+                    }
+                }
+                match eco::start_eco_manager_async().await {
+                    Ok(_) => println!("[ECO] Clipboard sync started on ports 53327/53328"),
+                    Err(e) => eprintln!("[ECO] Start failed: {}", e),
+                }
+            }
+            Err(e) => eprintln!("[ECO] Init failed: {}", e),
         }
 
         // ═══════════════════════════════════════════════════════
@@ -278,13 +294,6 @@ fn App() -> Element {
 
     // Incoming transfer state (for popup)
     let mut pending_transfers = use_signal(|| Vec::<fastswap::PendingTransfer>::new());
-
-    // Ecosystem dialog state
-    let mut show_ecosystem_dialog = use_signal(|| false);
-
-    // Notification panel state
-    let mut show_notifications = use_signal(|| false);
-    let mut unread_notifications = use_signal(|| 0usize);
 
     // Note: File sharing is handled by FastSwap (integrated Rust implementation)
 
@@ -357,18 +366,7 @@ fn App() -> Element {
                         // Start server on first show
                         spawn(async { fastswap::start_on_demand().await });
                     }
-                    // Ecosystem dialog trigger
-                    if ui_state.show_ecosystem_dialog && !show_ecosystem_dialog() {
-                        show_ecosystem_dialog.set(true);
-                    }
-                    // Notification panel trigger
-                    if ui_state.show_notifications && !show_notifications() {
-                        show_notifications.set(true);
-                        ui_state.show_notifications = false;
-                    }
                 }
-                let list = crate::eco::notifications::get_notification_list();
-                unread_notifications.set(list.iter().filter(|n| !n.read).count());
             }
         });
     });
@@ -435,12 +433,6 @@ fn App() -> Element {
         // Settings Panel (modal)
         SettingsPanel { is_open: show_settings }
 
-        // Notification Panel (modal)
-        NotificationPanel {
-            show: show_notifications(),
-            on_close: move |_| show_notifications.set(false),
-        }
-
         // FastSwap Panel (modal)
         if show_fastswap() {
             div {
@@ -480,90 +472,6 @@ fn App() -> Element {
         // Presentation Panel (full screen overlay with TTS narration)
         PresentationPanel {}
 
-        // Ecosystem Clipboard Sync Dialog
-        if show_ecosystem_dialog() {
-            div {
-                style: "position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;",
-
-                div {
-                    style: "background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 20px; padding: 40px; max-width: 480px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); text-align: center;",
-                    onclick: move |e| e.stop_propagation(),
-
-                    div {
-                        style: "font-size: 48px; margin-bottom: 16px;",
-                        "📋"
-                    }
-
-                    h2 {
-                        style: "color: #fff; font-size: 22px; margin-bottom: 12px;",
-                        "Enable Clipboard Sync?"
-                    }
-
-                    p {
-                        style: "color: #9ca3af; font-size: 14px; line-height: 1.6; margin-bottom: 8px;",
-                        "Copy text on one device and paste it on another",
-                    }
-                    p {
-                        style: "color: #6b7280; font-size: 13px; line-height: 1.5; margin-bottom: 28px;",
-                        "Works between all your devices on the same local network."
-                    }
-
-                    div {
-                        style: "display: flex; gap: 12px; justify-content: center;",
-
-                        button {
-                            style: "padding: 12px 32px; border-radius: 10px; border: none; background: rgba(255,255,255,0.1); color: #9ca3af; font-size: 15px; cursor: pointer; transition: all 0.2s;",
-                            onmouseenter: move |_| {},
-                            onclick: move |_| {
-                                show_ecosystem_dialog.set(false);
-                                if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
-                                    ui_state.show_ecosystem_dialog = false;
-                                }
-                            },
-                            "No"
-                        }
-
-                        button {
-                            style: "padding: 12px 32px; border-radius: 10px; border: none; background: linear-gradient(135deg, #06b6d4, #3b82f6); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);",
-                            onmouseenter: move |_| {},
-                            onclick: move |_| {
-                                println!("[ECO] User clicked YES — initializing clipboard sync...");
-                                show_ecosystem_dialog.set(false);
-                                if let Ok(mut ui_state) = UI_PANEL_STATE.lock() {
-                                    ui_state.show_ecosystem_dialog = false;
-                                }
-                                std::thread::spawn(|| {
-                                    let pkg_dir = PathBuf::from("./pkg");
-                                    match eco::init_eco_manager(&pkg_dir) {
-                                        Ok(_) => {
-                                            println!("[ECO] Manager initialized");
-                                            let config_path = pkg_dir.join("ecosystem/ecosystem_config.json");
-                                            if let Some(mut guard) = eco::get_eco_manager() {
-                                                if let Some(ref mut manager) = *guard {
-                                                    manager.enable_clipboard_sync();
-                                                    manager.config_mut().enabled = true;
-                                                    manager.config_mut().save(&config_path);
-                                                    println!("[ECO] Config saved (clipboard_sync=true)");
-                                                }
-                                            }
-                                            match eco::start_eco_manager() {
-                                                Ok(_) => println!("[ECO] Ecosystem started successfully"),
-                                                Err(e) => eprintln!("[ECO] Start failed: {}", e),
-                                            }
-                                        }
-                                        Err(e) => {
-                                            eprintln!("[ECO] Init failed: {}", e);
-                                        }
-                                    }
-                                });
-                            },
-                            "Yes"
-                        }
-                    }
-                }
-            }
-        }
-
         // Incoming Transfer Popup (highest z-index, appears on top of everything)
         IncomingTransferPopup { pending_transfers }
 
@@ -592,24 +500,6 @@ fn App() -> Element {
                     }
                 }
 
-                // Menu Button (top right)
-                div { style: "position: fixed; top: clamp(12px, 3vh, 24px); right: clamp(120px, 15vw, 180px); z-index: 50; display: flex; align-items: center; gap: 8px;",
-                    button {
-                        style: format!(
-                            "background: none; border: 1px solid {}; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; transition: all 0.2s; color: {}; font-size: 16px;",
-                            if unread_notifications() > 0 { "#06b6d4" } else { "rgba(255,255,255,0.2)" },
-                            if unread_notifications() > 0 { "#06b6d4" } else { "#6b7280" },
-                        ),
-                        onmouseenter: move |_| {},
-                        onclick: move |_| show_notifications.set(true),
-                        "🔔"
-                        if unread_notifications() > 0 {
-                            div { style: "position: absolute; top: -4px; right: -4px; background: #ef4444; color: #fff; font-size: 10px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;",
-                                if unread_notifications() > 9 { "9+" } else { "{unread_notifications()}" }
-                            }
-                        }
-                    }
-                }
                 MenuButton {
                     settings_open: show_settings,
                     fastswap_open: show_fastswap

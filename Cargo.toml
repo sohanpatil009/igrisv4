@@ -110,13 +110,9 @@ codegen-units = 1
 name = "igrisv3"
 path = "src/lib.rs"
 
-[[bin]]
-name = "igrisv3"
-path = "src/main.rs"
 
-[[bin]]
-name = "clipboard-sync"
-path = "src/bin/clipboard_sync.rs"
+
+
 
 
 # Asset embedding
