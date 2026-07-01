@@ -64,7 +64,7 @@ impl AppLauncher for WindowsAppLauncher {
         
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let display_name = get_canonical_app_name(app_name);
-        let (_, cmd_name) = get_windows_process_name(app_name);
+        let (exe_name, cmd_name) = get_windows_process_name(app_name);
         
         let commands = vec![cmd_name, display_name.clone()];
         

@@ -5,10 +5,12 @@ fn init_rustls_crypto() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        rustls::crypto::aws_lc_rs::default_provider()
-            .install_default()
-            .expect("Failed to install rustls CryptoProvider (aws-lc-rs)");
-        println!("[Parakeet STT] rustls CryptoProvider initialized (aws-lc-rs)");
+        let provider = rustls::crypto::aws_lc_rs::default_provider();
+        if provider.install_default().is_err() {
+            println!("[Parakeet STT] rustls CryptoProvider already initialized by another crate");
+        } else {
+            println!("[Parakeet STT] rustls CryptoProvider initialized (aws-lc-rs)");
+        }
     });
 }
 

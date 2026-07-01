@@ -10,7 +10,7 @@ A voice-activated AI assistant built with **Rust** and **Dioxus 0.7**. IGRIS pro
 
 ### Voice Processing Pipeline
 - **Wake Word Detection** — Say "hello" (or "alita" in Alita mode) to activate
-- **Speech Recognition** — Offline STT via Whisper (base-q8_0 quantized model); or **Online Parakeet ASR** via NVIDIA NIM gRPC
+- **Speech Recognition** — Offline STT via SenseVoice (sherpa-onnx, multi-language); or **Online Parakeet ASR** via NVIDIA NIM gRPC
 - **Voice Activity Detection** — FFT-based spectral VAD with configurable thresholds, noise gating, and state machine
 - **Natural Language Understanding** — SBERT sentence embeddings + NER + fuzzy keyword matching with context memory
 - **LLM Reasoning** — **Offline**: candle ML (Qwen 2.5 1.5B GGUF, feature-gated); **Online**: any NVIDIA NIM model (default `meta/llama-3.1-8b-instruct`) with 18-tool function calling, personality, and conversation context
@@ -82,7 +82,7 @@ src/
 ├── lib.rs                    # Library exports & global state
 ├── config.rs                 # JSON config (personality, recognition, TTS, hotkey, UI)
 ├── core/
-│   ├── stt.rs                # Whisper STT (offline transcription)
+│   ├── stt.rs                # SenseVoice STT (offline transcription, sherpa-onnx)
 │   ├── tts.rs                # Piper TTS with audio caching
 │   ├── vad.rs                # FFT-based Voice Activity Detection
 │   ├── wake_word.rs          # Wake word detection with Levenshtein fallback
@@ -178,7 +178,7 @@ src/
 Startup: ─→ Check Internet ─→ Online? + API key? ─YES─→ Online Mode (skip SBERT/local LLM)
                               │                       └──→ Parakeet ASR → NIM LLM → Tool Router → TTS
                               └NO─→ Offline Mode
-                                    └──→ Whisper STT → NLU (SBERT) → Plugin System → TTS (Piper)
+                                    └──→ SenseVoice STT → NLU (SBERT) → Plugin System → TTS (Piper)
                                                            ↓
                                                      Keyword/LocalLLM
 
@@ -187,7 +187,7 @@ Runtime: ─→ Connectivity Monitor (every 15s) ─→ Internet lost? → Auto-
 
                                   ┌─────────────────────────────┐
                                   │      OFFLINE MODE           │
-Audio → VAD (FFT spectral) ─────→┤  Whisper STT → NLU (SBERT) ├─→ Plugin System → TTS (Piper)
+Audio → VAD (FFT spectral) ─────→┤  SenseVoice STT → NLU (SBERT) ├─→ Plugin System → TTS (Piper)
                                   │              ↓              │
                                   │        Keyword/LocalLLM     │
                                   └─────────────────────────────┘
@@ -222,7 +222,7 @@ cargo run --release
 ```
 
 First launch automatically downloads:
-- Whisper STT model (~81 MB)
+- SenseVoice STT model (~940 MB)
 - Piper TTS + voice model (~50 MB)
 - SBERT NLU model (~80 MB)
 - FFmpeg (Windows only, ~100 MB)
@@ -381,7 +381,7 @@ Accessible via the **Settings Panel** (☰ menu button, top-right).
 
 | Model | Size | Purpose |
 |-------|------|---------|
-| `model.int8.onnx` + `tokens.txt` | ~60 MB | SenseVoice STT (sherpa-onnx) |
+| `model.onnx` + `tokens.txt` | ~940 MB | SenseVoice STT (sherpa-onnx, f32) |
 | `en_US-libritts_r-medium.onnx` | 50 MB | Piper TTS voice |
 | `all-MiniLM-L6-v2` | ~80 MB | SBERT sentence embeddings |
 | `espeak-ng-data` | — | Phoneme data for Piper |
