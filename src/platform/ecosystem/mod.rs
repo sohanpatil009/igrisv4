@@ -5,11 +5,17 @@ pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
-use crate::eco::errors::EcoResult;
+use crate::eco::errors::{EcoError, EcoResult};
 
 pub trait PlatformClipboard: Send + Sync {
     fn get_text(&self) -> EcoResult<String>;
     fn set_text(&self, text: &str) -> EcoResult<()>;
+    fn get_image(&self) -> EcoResult<Option<Vec<u8>>> {
+        Ok(None)
+    }
+    fn set_image(&self, _data: &[u8]) -> EcoResult<()> {
+        Err(EcoError::Clipboard("Image clipboard not supported on this platform".to_string()))
+    }
 }
 
 pub fn create_platform_clipboard() -> Box<dyn PlatformClipboard> {

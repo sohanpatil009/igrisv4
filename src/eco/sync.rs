@@ -54,6 +54,7 @@ impl SyncManager {
                         content_type: data.content_type.clone(),
                         source_device: sender_id.clone(),
                         timestamp: chrono::Utc::now().timestamp_millis(),
+                        image_data: data.image_data.clone(),
                     };
 
                     let peer_count = peers.iter().filter(|(_, d)| d.device.capabilities.clipboard_sync && d.device.addr.is_some()).count();

@@ -58,6 +58,7 @@ impl DeviceDiscovery {
                             content_hash: payload.content_hash,
                             source_device: payload.source_device,
                             timestamp: payload.timestamp,
+                            image_data: payload.image_data,
                         };
                         bus.emit(EcoEvent::ClipboardReceived(
                             std::sync::Arc::new(data),

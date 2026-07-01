@@ -49,6 +49,7 @@ pub struct ClipboardSyncPayload {
     pub content_type: String,
     pub source_device: String,
     pub timestamp: i64,
+    pub image_data: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

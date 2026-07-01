@@ -13,6 +13,7 @@ pub struct ClipboardEntry {
     pub source_device: String,
     pub timestamp: i64,
     pub content_hash: String,
+    pub image_data: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
