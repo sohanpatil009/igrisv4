@@ -4,6 +4,7 @@ pub mod macos;
 pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod notifications;
 
 use crate::eco::errors::EcoResult;
 

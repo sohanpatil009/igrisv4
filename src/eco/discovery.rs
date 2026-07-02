@@ -1,7 +1,7 @@
 use crate::eco::constants::*;
 use crate::eco::device::EcoDevice;
 use crate::eco::events::{EcoEvent, EventBus};
-use crate::eco::protocol::ClipboardSyncPayload;
+use crate::eco::protocol::{ClipboardSyncPayload, NotificationSyncPayload, NotificationReplyPayload};
 use axum::extract::ConnectInfo;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -200,6 +200,47 @@ impl DeviceDiscovery {
                                 dev.is_trusted = false;
                             }
                         }
+                        axum::Json(serde_json::json!({"status": "ok"}))
+                    }
+                }
+            }))
+            .route("/api/ecosystem/v1/notification/sync", axum::routing::post({
+                let bus = event_bus.clone();
+                move |body: axum::extract::Json<NotificationSyncPayload>| {
+                    let bus = bus.clone();
+                    async move {
+                        let payload = body.0;
+                        let notif = crate::eco::notification::NotificationData {
+                            id: payload.notification_id,
+                            app_name: payload.app_name,
+                            title: payload.title,
+                            body: payload.body,
+                            device_name: payload.source_device_name,
+                            device_id: payload.source_device_id,
+                            timestamp: payload.timestamp,
+                            read: false,
+                            replied: false,
+                        };
+                        bus.emit(EcoEvent::NotificationReceived(
+                            notif,
+                            "remote".to_string(),
+                        ));
+                        axum::Json(serde_json::json!({"status": "ok"}))
+                    }
+                }
+            }))
+            .route("/api/ecosystem/v1/notification/reply", axum::routing::post({
+                let bus = event_bus.clone();
+                move |body: axum::extract::Json<NotificationReplyPayload>| {
+                    let bus = bus.clone();
+                    async move {
+                        let payload = body.0;
+                        let reply = crate::eco::notification::NotificationReply {
+                            notification_id: payload.notification_id,
+                            reply_text: payload.reply_text,
+                            source_device_id: payload.source_device_id,
+                        };
+                        bus.emit(EcoEvent::NotificationReplied(reply));
                         axum::Json(serde_json::json!({"status": "ok"}))
                     }
                 }

@@ -6,6 +6,7 @@ use crate::eco::device::{Capabilities, EcoDevice};
 use crate::eco::discovery::DeviceDiscovery;
 use crate::eco::errors::{EcoError, EcoResult};
 use crate::eco::events::{EcoEvent, EventBus};
+use crate::eco::notification::{NotificationManager, NOTIFICATION_HISTORY};
 use crate::eco::permissions::EcoPermissions;
 use crate::eco::storage::EcoStorage;
 use crate::eco::sync::SyncManager;
@@ -23,6 +24,7 @@ pub struct EcoManager {
     local_device: Arc<RwLock<EcoDevice>>,
     discovery: Option<Arc<DeviceDiscovery>>,
     clipboard: Option<Arc<std::sync::Mutex<ClipboardManager>>>,
+    notification: Option<Arc<std::sync::Mutex<NotificationManager>>>,
     storage: Arc<std::sync::Mutex<EcoStorage>>,
     permissions: Option<Arc<EcoPermissions>>,
     crypto: Option<EcoCrypto>,
@@ -52,6 +54,7 @@ impl EcoManager {
             local_device,
             discovery: None,
             clipboard: None,
+            notification: None,
             storage,
             permissions: None,
             crypto: None,
@@ -79,6 +82,7 @@ impl EcoManager {
             device.public_key = Some(public_key_pem);
             device.capabilities = Capabilities {
                 clipboard_sync: self.config.clipboard_sync,
+                notification_sync: self.config.notification_sync,
                 ..Default::default()
             };
         }
@@ -96,6 +100,19 @@ impl EcoManager {
             self.storage.clone(),
         );
         self.clipboard = Some(Arc::new(std::sync::Mutex::new(clipboard)));
+
+        // Initialize notification manager
+        let (device_id, device_name) = {
+            let device = self.local_device.read().await;
+            (device.id.to_string(), device.name.clone())
+        };
+        let notification = NotificationManager::new(
+            self.event_bus.clone(),
+            pkg_dir,
+            device_id,
+            device_name,
+        );
+        self.notification = Some(Arc::new(std::sync::Mutex::new(notification)));
 
         self.initialized = true;
         self.running = false;
@@ -213,6 +230,92 @@ impl EcoManager {
             }
         }
 
+        // ---- Notification sync ----
+        if self.config.notification_sync {
+            println!("[ECO] Notification sync ENABLED (polling every 2s)");
+            let notification = self.notification.clone();
+            let event_bus = self.event_bus.clone();
+            let transport = self.transport.clone();
+            let known_devices = self.discovery.as_ref().map(|d| d.get_known_devices());
+
+            // Subscribe to incoming notifications from peers
+            {
+                let notification = notification.clone();
+                event_bus.subscribe(Arc::new(move |event| {
+                    if let EcoEvent::NotificationReceived(notif, from) = event {
+                        if from == "remote" {
+                            println!("[ECO] Received notification from {}: {} - {}",
+                                notif.device_name, notif.app_name, notif.title);
+                            if let Some(ref mgr) = notification {
+                                if let Ok(mut guard) = mgr.lock() {
+                                    guard.receive_remote(notif);
+                                }
+                            }
+                        }
+                    }
+                }));
+            }
+
+            // Poll local notifications periodically
+            let notification_poll = notification.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(
+                    std::time::Duration::from_secs(2)
+                );
+                loop {
+                    interval.tick().await;
+                    if let Some(ref mgr) = notification_poll {
+                        let new_notifs = {
+                            if let Ok(mut guard) = mgr.lock() {
+                                guard.poll_local()
+                            } else {
+                                vec![]
+                            }
+                        };
+                        // Sync new notifications to peers
+                        for notif in new_notifs {
+                            if let Some(ref devices) = known_devices {
+                                let devices = devices.read().await;
+                                let local_device = notification_poll.as_ref()
+                                    .and_then(|m| m.lock().ok())
+                                    .map(|g| g.get_notifications().first().map(|n| n.device_id.clone()))
+                                    .flatten()
+                                    .unwrap_or_default();
+                                for (_id, device) in devices.iter() {
+                                    if let Some(addr) = device.device.addr {
+                                        let payload = crate::eco::protocol::NotificationSyncPayload {
+                                            notification_id: notif.id.clone(),
+                                            app_name: notif.app_name.clone(),
+                                            title: notif.title.clone(),
+                                            body: notif.body.clone(),
+                                            source_device_id: local_device.clone(),
+                                            source_device_name: notif.device_name.clone(),
+                                            timestamp: notif.timestamp,
+                                        };
+                                        let transport = transport.clone();
+                                        tokio::spawn(async move {
+                                            let _ = transport.send_notification(&addr, &payload).await;
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Update global notification history for UI access
+            {
+                event_bus.subscribe(Arc::new(move |_event| {
+                    if let Some(ref mgr) = notification {
+                        if let Ok(guard) = mgr.lock() {
+                            crate::eco::notification::set_notifications(guard.get_notifications());
+                        }
+                    }
+                }));
+            }
+        }
+
         self.running = true;
 
         self.event_bus.emit(EcoEvent::Synced(
@@ -260,6 +363,52 @@ impl EcoManager {
 
     pub fn disable_clipboard_sync(&mut self) {
         self.config.clipboard_sync = false;
+    }
+
+    pub fn enable_notification_sync(&mut self) {
+        self.config.notification_sync = true;
+    }
+
+    pub fn disable_notification_sync(&mut self) {
+        self.config.notification_sync = false;
+    }
+
+    pub fn notification_manager(&self) -> Option<&Arc<std::sync::Mutex<NotificationManager>>> {
+        self.notification.as_ref()
+    }
+
+    pub async fn reply_to_notification(&self, notification_id: &str, reply_text: &str) -> EcoResult<()> {
+        if let Some(ref mgr) = self.notification {
+            let guard = mgr.lock().map_err(|_| EcoError::Notification("Lock failed".to_string()))?;
+            guard.reply_to_notification(notification_id, reply_text)
+        } else {
+            Err(EcoError::NotInitialized)
+        }
+    }
+
+    pub fn get_notifications(&self) -> Vec<crate::eco::notification::NotificationData> {
+        if let Some(ref mgr) = self.notification {
+            if let Ok(guard) = mgr.lock() {
+                return guard.get_notifications();
+            }
+        }
+        Vec::new()
+    }
+
+    pub fn mark_notification_read(&self, notification_id: &str) {
+        if let Some(ref mgr) = self.notification {
+            if let Ok(mut guard) = mgr.lock() {
+                guard.mark_read(notification_id);
+            }
+        }
+    }
+
+    pub fn clear_notifications(&self) {
+        if let Some(ref mgr) = self.notification {
+            if let Ok(mut guard) = mgr.lock() {
+                guard.clear_all();
+            }
+        }
     }
 
     pub async fn apply_received_clipboard(&self, data: ClipboardData) -> EcoResult<()> {

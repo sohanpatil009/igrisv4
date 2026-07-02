@@ -28,6 +28,7 @@ use igrisv3::ui::{
     SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem,
     CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup,
     Sidebar, Tab, AlarmReminderPanel, SystemInfoPanel, EcoDevicePanel, ChatPanel,
+    NotificationPanel,
 };
 use igrisv3::commands::ffmpeg_camera::{CameraPanelState, CAMERA_PANEL_STATE};
 
@@ -198,12 +199,13 @@ async fn run_setup_and_assistant() {
             if let Some(mut guard) = eco::get_eco_manager() {
                 if let Some(ref mut manager) = *guard {
                     manager.enable_clipboard_sync();
+                    manager.enable_notification_sync();
                     manager.config_mut().enabled = true;
                     manager.config_mut().save(&config_path);
                 }
             }
             match eco::start_eco_manager_async().await {
-                Ok(_) => println!("[ECO] Clipboard sync started on ports 53327/53328"),
+                Ok(_) => println!("[ECO] Clipboard + notification sync started on ports 53327/53328"),
                 Err(e) => eprintln!("[ECO] Start failed: {}", e),
             }
         }
@@ -640,6 +642,12 @@ fn App() -> Element {
                             },
                             Tab::Devices => rsx! {
                                 EcoDevicePanel {
+                                    primary_color,
+                                    accent_rgb,
+                                }
+                            },
+                            Tab::Notifications => rsx! {
+                                NotificationPanel {
                                     primary_color,
                                     accent_rgb,
                                 }

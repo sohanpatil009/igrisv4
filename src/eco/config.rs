@@ -7,6 +7,7 @@ pub struct EcosystemConfig {
     pub port: u16,
     pub auto_discovery: bool,
     pub clipboard_sync: bool,
+    pub notification_sync: bool,
     pub device_name: String,
     pub storage_dir: PathBuf,
 }
@@ -18,6 +19,7 @@ impl Default for EcosystemConfig {
             port: crate::eco::constants::DEFAULT_ECO_PORT,
             auto_discovery: true,
             clipboard_sync: false,
+            notification_sync: false,
             device_name: whoami::fallible::hostname().unwrap_or_default(),
             storage_dir: PathBuf::from("pkg").join(crate::eco::constants::ECO_STORAGE_DIR),
         }

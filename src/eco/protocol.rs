@@ -21,6 +21,8 @@ pub enum MessageType {
     ClipboardSync(ClipboardSyncPayload),
     ClipboardPullRequest(ClipboardPullRequest),
     ClipboardPullResponse(ClipboardPullResponse),
+    NotificationSync(NotificationSyncPayload),
+    NotificationReply(NotificationReplyPayload),
     PairingRequest(PairingPayload),
     PairingResponse(PairingPayload),
     Heartbeat,
@@ -60,6 +62,26 @@ pub struct ClipboardPullResponse {
     pub content: String,
     pub content_type: String,
     pub success: bool,
+}
+
+/// Notification synced from a remote device.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NotificationSyncPayload {
+    pub notification_id: String,
+    pub app_name: String,
+    pub title: String,
+    pub body: String,
+    pub source_device_id: String,
+    pub source_device_name: String,
+    pub timestamp: i64,
+}
+
+/// Reply to a notification sent back to the originating device.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NotificationReplyPayload {
+    pub notification_id: String,
+    pub reply_text: String,
+    pub source_device_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

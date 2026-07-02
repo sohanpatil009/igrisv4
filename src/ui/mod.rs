@@ -10,6 +10,7 @@ pub mod alarm_reminder_panel;
 pub mod system_info_panel;
 pub mod eco_device_panel;
 pub mod chat_panel;
+pub mod notification_panel;
 
 pub use settings::{SettingsPanel, SettingsButton};
 pub use search_results::{SearchResultsPanel, SearchResultItem};
@@ -23,3 +24,4 @@ pub use alarm_reminder_panel::AlarmReminderPanel;
 pub use system_info_panel::SystemInfoPanel;
 pub use eco_device_panel::EcoDevicePanel;
 pub use chat_panel::ChatPanel;
+pub use notification_panel::NotificationPanel;
