@@ -2,6 +2,7 @@ use crate::eco::constants::*;
 use crate::eco::device::EcoDevice;
 use crate::eco::events::{EcoEvent, EventBus};
 use crate::eco::protocol::ClipboardSyncPayload;
+use axum::extract::ConnectInfo;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -37,7 +38,6 @@ struct PairVerifyPayload {
     pending_id: String,
     otp: String,
     remote_device_id: String,
-    local_device_id: String,
 }
 
 #[derive(Deserialize)]
@@ -134,7 +134,7 @@ impl DeviceDiscovery {
             }))
             .route("/api/ecosystem/v1/pair/request", axum::routing::post({
                 let pending = pair_pending.clone();
-                move |body: axum::extract::Json<PairRequestPayload>| {
+                move |ConnectInfo(remote_addr): ConnectInfo<SocketAddr>, body: axum::extract::Json<PairRequestPayload>| {
                     let pending = pending.clone();
                     async move {
                         let p = body.0;
@@ -143,7 +143,7 @@ impl DeviceDiscovery {
                             id: id.clone(),
                             sender_id: p.sender_id,
                             sender_name: p.sender_name,
-                            sender_addr: format!("0.0.0.0:{}", p.sender_port).parse().unwrap_or(SocketAddr::from(([0,0,0,0], 53328))),
+                            sender_addr: SocketAddr::new(remote_addr.ip(), p.sender_port),
                             otp_hash: p.otp_hash,
                             received_at: Instant::now(),
                         };
@@ -209,7 +209,7 @@ impl DeviceDiscovery {
         tokio::spawn(async move {
             let listener = tokio::net::TcpListener::bind(bind_addr).await;
             if let Ok(listener) = listener {
-                axum::serve(listener, app).await.ok();
+                axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.ok();
             }
         });
     }
