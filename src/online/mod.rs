@@ -70,5 +70,5 @@ pub async fn check_internet_connectivity() -> bool {
     false
 }
 
-pub use reasoning::{reason_online, OnlineReasoning};
+pub use reasoning::{reason_online, reason_online_with_model, reason_online_fast, OnlineReasoning, LlmProvider, AVAILABLE_MODELS, FAST_MODEL};
 pub use stt::{transcribe_online, OnlineStt};

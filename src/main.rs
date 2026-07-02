@@ -27,7 +27,7 @@ use igrisv3::utils::shared_memory::init_shared_memory;
 use igrisv3::ui::{
     SettingsPanel, MenuButton, SearchResultsPanel, SearchResultItem,
     CameraPanel, PresentationPanel, FastSwapPanel, IncomingTransferPopup,
-    Sidebar, Tab, AlarmReminderPanel, SystemInfoPanel, EcoDevicePanel,
+    Sidebar, Tab, AlarmReminderPanel, SystemInfoPanel, EcoDevicePanel, ChatPanel,
 };
 use igrisv3::commands::ffmpeg_camera::{CameraPanelState, CAMERA_PANEL_STATE};
 
@@ -327,6 +327,18 @@ fn App() -> Element {
         ("#06b6d4", "#3b82f6", "rgba(34, 211, 238, 0.8)", "34, 211, 238")
     };
 
+    let orb_size = "clamp(150px, 32vmin, 280px)";
+    let orbit_dots: Vec<(f64, i32, String, f64, f64, String)> = (0..8).map(|i| {
+        let angle = i as f64 * 45.0;
+        let sz = if i % 2 == 0 { 9 } else { 5 };
+        let col = if i % 2 == 0 { primary_color.to_string() } else { secondary_color.to_string() };
+        let rad = if i % 2 == 0 { 85.0 } else { 58.0 };
+        let spd = if i % 2 == 0 { 7.0 } else { 5.5 };
+        let dly = -(angle / 360.0 * spd);
+        let dr = if i % 2 == 0 { "normal".to_string() } else { "reverse".to_string() };
+        (dly, sz, col, rad, spd, dr)
+    }).collect();
+
     rsx! {
         style { r#"
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -339,7 +351,46 @@ fn App() -> Element {
             @keyframes pulse {{ 0%, 100% {{ opacity: 0.4; transform: scale(1); }} 50% {{ opacity: 0.8; transform: scale(1.05); }} }}
             @keyframes pulse-intense {{ 0%, 100% {{ box-shadow: 0 0 20px rgba(168, 85, 247, 0.8), 0 0 40px rgba(168, 85, 247, 0.4); transform: scale(1); }} 50% {{ box-shadow: 0 0 30px rgba(168, 85, 247, 1), 0 0 60px rgba(168, 85, 247, 0.6); transform: scale(1.1); }} }}
             @keyframes wave {{ 0%, 100% {{ height: 0.5rem; opacity: 0.7; }} 50% {{ height: 3rem; opacity: 1; }} }}
-            @keyframes fade-in-out {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.7; }} }}
+            @keyframes scanline {{
+                0% {{ transform: translateY(-100%); }}
+                100% {{ transform: translateY(100vh); }}
+            }}
+            @keyframes grid-scroll {{
+                0% {{ transform: translateY(0); }}
+                100% {{ transform: translateY(32px); }}
+            }}
+            @keyframes hud-flicker {{
+                0%, 100% {{ opacity: 1; }}
+                50% {{ opacity: 0.97; }}
+            }}
+            @keyframes bracket-pulse {{
+                0%, 100% {{ opacity: 0.5; }}
+                50% {{ opacity: 1; }}
+            }}
+            @keyframes data-stream {{
+                0% {{ transform: translateX(-100%); }}
+                100% {{ transform: translateX(200%); }}
+            }}
+            @keyframes glow-breath {{
+                0%, 100% {{ filter: blur(8px); opacity: 0.3; }}
+                50% {{ filter: blur(12px); opacity: 0.5; }}
+            }}
+            @keyframes spin-reverse {{
+                from {{ transform: rotate(360deg); }}
+                to {{ transform: rotate(0deg); }}
+            }}
+            @keyframes float-3d {{
+                0%, 100% {{ transform: rotateX(8deg) rotateY(12deg); }}
+                50% {{ transform: rotateX(5deg) rotateY(8deg); }}
+            }}
+            @keyframes pulse-text {{
+                0%, 100% {{ transform: scale(1); opacity: 0.85; }}
+                50% {{ transform: scale(1.03); opacity: 1; }}
+            }}
+            @keyframes scan {{
+                0% {{ left: -100%; }}
+                100% {{ left: 200%; }}
+            }}
             @keyframes blink-1 {{ 0%, 100% {{ opacity: 0.3; }} 50% {{ opacity: 1; }} }}
             @keyframes blink-2 {{ 0%, 100% {{ opacity: 0.3; }} 50% {{ opacity: 1; }} }}
             @keyframes blink-3 {{ 0%, 100% {{ opacity: 0.3; }} 50% {{ opacity: 1; }} }}
@@ -381,10 +432,10 @@ fn App() -> Element {
         IncomingTransferPopup { pending_transfers }
 
         // Main layout with sidebar
-        div { style: "width: 100vw; height: 100vh; display: flex; background: #0a0a0a; color: #fff; font-family: 'Inter', sans-serif; position: relative; overflow: hidden;",
+        div { style: "width: 100vw; height: 100vh; display: flex; background: #050a14; color: #fff; font-family: 'Inter', sans-serif; position: relative; overflow: hidden;",
 
             if show_setup && setup_progress {
-                div { style: "position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100; background: #0a0a0a;",
+                div { style: "position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100; background: #050a14;",
                     SetupGui {}
                 }
             }
@@ -399,24 +450,42 @@ fn App() -> Element {
                 }
 
                 // Main content area
-                div { style: "flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, rgba(168,85,247,0.03) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(59,130,246,0.03) 0%, transparent 50%);",
+                div { style: "flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; background: #050a14;",
+
+                    // Grid overlay
+                    div { style: "position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0.03;",
+                        div { style: "width: 100%; height: 100%; background-image: linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px); background-size: 32px 32px; animation: grid-scroll 4s linear infinite;" }
+                    }
+
+                    // Scan line overlay
+                    div { style: "position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; opacity: 0.04;",
+                        div { style: "width: 100%; height: 2px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent); animation: scanline 4s linear infinite;" }
+                    }
+
+                    // Accent gradient glow in top-right
+                    div { style: format!("position: absolute; top: -200px; right: -200px; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba({}, 0.06), transparent 70%); pointer-events: none; z-index: 0; transition: all 0.5s;", accent_rgb) }
+                    div { style: format!("position: absolute; bottom: -150px; left: -150px; width: 400px; height: 400px; border-radius: 50%; background: radial-gradient(circle, rgba({}, 0.04), transparent 70%); pointer-events: none; z-index: 0; transition: all 0.5s;", accent_rgb) }
 
                     // Top bar
-                    div { style: format!("display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid rgba({}, 0.1); flex-shrink: 0; transition: border-color 0.5s;", accent_rgb),
-                        div { style: "display: flex; align-items: center; gap: 12px;",
-                            h1 {
-                                style: format!("font-size: 20px; font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 20px {}; transition: all 0.5s;", glow_color),
-                                span { style: format!("color: {}; transition: color 0.5s;", primary_color), "{name}" }
-                                span { style: "color: #4b5563; font-size: 11px; margin-left: 6px;", "v1.0" }
+                    div { style: format!("position: relative; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid rgba({}, 0.08); flex-shrink: 0; transition: border-color 0.5s; background: rgba(5,10,20,0.8); backdrop-filter: blur(8px);", accent_rgb),
+                        // Corner brackets on top bar
+                        div { style: format!("position: absolute; bottom: -1px; left: 0; width: 20px; height: 8px; border-left: 1px solid rgba({}, 0.2); border-bottom: 1px solid rgba({}, 0.2); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                        div { style: format!("position: absolute; bottom: -1px; right: 0; width: 20px; height: 8px; border-right: 1px solid rgba({}, 0.2); border-bottom: 1px solid rgba({}, 0.2); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+
+                        div { style: "display: flex; align-items: center; gap: 14px;",
+                            div { style: format!("font-size: 11px; font-weight: 700; letter-spacing: 2px; font-family: 'JetBrains Mono', monospace; color: {}; text-shadow: 0 0 20px {}; transition: all 0.5s;", primary_color, glow_color),
+                                "// {name}"
                             }
+                            span { style: "font-size: 9px; color: rgba(255,255,255,0.12); font-family: monospace; letter-spacing: 0.5px;", "v1.0.0_eco" }
                             div {
                                 style: format!(
-                                    "padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; \
-                                     background: {}; color: {};",
-                                    if awake { format!("rgba({}, 0.15)", accent_rgb) } else { "rgba(34,197,94,0.15)".to_string() },
+                                    "padding: 2px 10px; border-radius: 4px; font-size: 9px; letter-spacing: 1px; font-weight: 600; font-family: monospace; \
+                                     background: {}; border: 1px solid {}; color: {}; transition: all 0.5s;",
+                                    if awake { format!("rgba({}, 0.1)", accent_rgb) } else { "rgba(34,197,94,0.08)".to_string() },
+                                    if awake { format!("rgba({}, 0.3)", accent_rgb) } else { "rgba(34,197,94,0.2)".to_string() },
                                     if awake { &primary_color } else { "#22c55e" },
                                 ),
-                                if awake { "Awake" } else { "Standby" }
+                                if awake { ">> AWAKE" } else { ">> STANDBY" }
                             }
                         }
                         MenuButton {
@@ -426,61 +495,142 @@ fn App() -> Element {
                     }
 
                     // Content area based on active tab
-                    div { style: "flex: 1; overflow: hidden; display: flex;",
+                    div { style: "flex: 1; overflow: hidden; display: flex; position: relative; z-index: 5;",
                         match current_tab() {
                             Tab::Dashboard => rsx! {
-                                div { style: "flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(24px, 5vh, 48px); padding: clamp(10px, 2vw, 20px); position: relative;",
-                                    // Animated Orb
-                                    div { style: "position: relative; width: clamp(120px, 30vmin, 256px); height: clamp(120px, 30vmin, 256px); display: flex; align-items: center; justify-content: center;",
-                                        div { style: format!("position: absolute; width: 100%; height: 100%; border: 2px solid {}; border-radius: 50%; opacity: 0.3; animation: spin 20s linear infinite; transition: border-color 0.5s;", primary_color) }
-                                        div { style: format!("position: absolute; width: 75%; height: 75%; border: 2px solid {}; border-radius: 50%; opacity: 0.4; animation: pulse 2s ease-in-out infinite; transition: border-color 0.5s;", secondary_color) }
-                                        div { style: format!("position: absolute; width: 62.5%; height: 62.5%; border: 2px solid {}; border-radius: 50%; opacity: 0.5; transition: border-color 0.5s;", primary_color) }
-                                        div { style: format!("position: absolute; width: 50%; height: 50%; background: linear-gradient(135deg, {}, {}); border-radius: 50%; filter: blur(clamp(24px, 5vmin, 48px)); opacity: 0.6; animation: pulse 3s ease-in-out infinite; transition: background 0.5s;", primary_color, secondary_color) }
-                                        div { style: format!("position: relative; width: 12.5%; height: 12.5%; min-width: 16px; min-height: 16px; background: {}; border-radius: 50%; box-shadow: 0 0 20px {}, 0 0 40px rgba({}, 0.4); animation: pulse-intense 2s ease-in-out infinite; transition: all 0.5s;", if awake { if igris_mode { "#e9d5ff" } else { "#fce7f3" } } else { "#cffafe" }, glow_color, accent_rgb) }
+                                div { style: "flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(20px, 4vh, 40px); padding: clamp(10px, 2vw, 20px); position: relative;",
+                                    // Top corner brackets (decorative)
+                                    div { style: format!("position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-left: 1px solid rgba({}, 0.15); border-top: 1px solid rgba({}, 0.15); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                    div { style: format!("position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-right: 1px solid rgba({}, 0.15); border-top: 1px solid rgba({}, 0.15); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                    div { style: format!("position: absolute; bottom: 12px; left: 12px; width: 24px; height: 24px; border-left: 1px solid rgba({}, 0.15); border-bottom: 1px solid rgba({}, 0.15); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                    div { style: format!("position: absolute; bottom: 12px; right: 12px; width: 24px; height: 24px; border-right: 1px solid rgba({}, 0.15); border-bottom: 1px solid rgba({}, 0.15); transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+
+                                    // 3D Holographic Sphere with orbiting gradient dots + AI name
+                                    div { style: format!("position: relative; width: {orb_size}; height: {orb_size}; display: flex; align-items: center; justify-content: center; perspective: 800px;"),
+                                        // 3D sphere body with lighting gradient
+                                        div { style: format!(
+                                            "position: absolute; inset: 0; border-radius: 50%; \
+                                             background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.13) 0%, {} 25%, {} 60%, rgba(0,0,0,0.5) 100%); \
+                                             box-shadow: 0 0 60px {}, 0 0 120px rgba({}, 0.15), inset 0 -30px 50px rgba(0,0,0,0.4); \
+                                             transition: all 0.5s; animation: float-3d 5s ease-in-out infinite; transform: rotateX(8deg) rotateY(12deg);",
+                                            primary_color, secondary_color, glow_color, accent_rgb
+                                        )}
+                                        // Tilted orbital ring for 3D depth
+                                        div { style: format!(
+                                            "position: absolute; inset: -6%; border-radius: 50%; \
+                                             border: 1px solid rgba({}, 0.1); transition: border-color 0.5s; \
+                                             transform: rotateX(65deg) rotateZ(0deg); animation: spin 14s linear infinite;",
+                                            accent_rgb
+                                        )}
+                                        // Inner orbital ring (counter-rotating)
+                                        div { style: format!(
+                                            "position: absolute; inset: 10%; border-radius: 50%; \
+                                             border: 1px solid rgba({}, 0.06); transition: border-color 0.5s; \
+                                             transform: rotateX(-45deg) rotateZ(0deg); animation: spin 18s linear infinite reverse;",
+                                            accent_rgb
+                                        )}
+                                        // Orbiting gradient dots
+                                        for (delay, size, color, radius, speed, dir) in orbit_dots.clone().into_iter() {
+                                            div { style: format!(
+                                                "position: absolute; top: 50%; left: 50%; width: 0; height: 0; \
+                                                 animation: spin {}s linear infinite; \
+                                                 animation-direction: {}; \
+                                                 animation-delay: {}s;",
+                                                speed, dir, delay
+                                            ),
+                                                div { style: format!(
+                                                    "width: {}px; height: {}px; background: linear-gradient(135deg, {}, rgba(255,255,255,0.5)); \
+                                                     border-radius: 50%; transform: translateX({}px); \
+                                                     box-shadow: 0 0 8px {};",
+                                                    size, size, color, radius, color
+                                                )}
+                                            }
+                                        }
+                                        // Glow aura
+                                        div { style: format!(
+                                            "position: absolute; width: 70%; height: 70%; \
+                                             background: radial-gradient(circle, {} 0%, rgba({}, 0.25) 40%, transparent 70%); \
+                                             border-radius: 50%; filter: blur(25px); opacity: 0.35; \
+                                             animation: glow-breath 3s ease-in-out infinite; transition: all 0.5s;",
+                                            primary_color, accent_rgb
+                                        )}
+                                        // AI name in center
+                                        div { style: format!(
+                                            "position: relative; z-index: 10; text-align: center; \
+                                             font-family: 'JetBrains Mono', monospace; font-weight: 900; \
+                                             font-size: clamp(26px, 5.5vmin, 44px); color: #ffffff; \
+                                             text-shadow: 0 0 10px rgba(0,0,0,0.8), 0 0 30px {}, 0 0 60px rgba({}, 0.6), 0 0 100px rgba({}, 0.3); \
+                                             letter-spacing: 4px; animation: pulse-text 2.5s ease-in-out infinite;",
+                                            glow_color, accent_rgb, accent_rgb
+                                        ),
+                                            "{name}"
+                                        }
                                     }
 
                                     // Audio wave bars
-                                    div { style: "display: flex; align-items: center; justify-content: center; gap: clamp(2px, 0.5vw, 4px); height: clamp(24px, 6vh, 48px);",
-                                        div { style: format!("height: 17%; width: clamp(2px, 0.5vw, 4px); background: {}; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; animation-delay: 0s; transition: background 0.5s;", primary_color) }
-                                        div { style: format!("height: 50%; width: clamp(2px, 0.5vw, 4px); background: {}; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; animation-delay: 0.1s; transition: background 0.5s;", primary_color) }
-                                        div { style: format!("height: 83%; width: clamp(2px, 0.5vw, 4px); background: {}; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; animation-delay: 0.2s; transition: background 0.5s;", primary_color) }
-                                        div { style: format!("height: 67%; width: clamp(2px, 0.5vw, 4px); background: {}; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; animation-delay: 0.3s; transition: background 0.5s;", primary_color) }
-                                        div { style: format!("height: 100%; width: clamp(2px, 0.5vw, 4px); background: {}; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; animation-delay: 0.4s; transition: background 0.5s;", primary_color) }
+                                    div { style: "display: flex; align-items: center; justify-content: center; gap: clamp(2px, 0.5vw, 4px); height: clamp(20px, 5vh, 40px); opacity: 0.6;",
+                                        for i in 0..5 {
+                                            div { style: format!("height: {}%; width: clamp(2px, 0.4vw, 3px); background: {}; border-radius: 1px; animation: wave 0.8s ease-in-out infinite; animation-delay: {}s; transition: background 0.5s;",
+                                                [17, 50, 83, 67, 100][i], primary_color, i as f64 * 0.1,
+                                            )}
+                                        }
                                     }
 
-                                    // Last command box
-                                    div { style: format!("width: min(90%, 600px); padding: clamp(10px, 2vh, 16px) clamp(12px, 2vw, 24px); background: linear-gradient(135deg, rgba({}, 0.1), rgba({}, 0.15)); border: 1px solid rgba({}, 0.5); border-radius: 12px; backdrop-filter: blur(10px); transition: all 0.5s;", accent_rgb, accent_rgb, accent_rgb),
-                                        div { style: "font-size: clamp(10px, 1.5vw, 12px); letter-spacing: 1px; color: #9ca3af; margin-bottom: clamp(4px, 1vh, 8px); text-transform: uppercase;", "Last Command" }
-                                        div { style: format!("font-size: clamp(12px, 2vw, 18px); color: {}; font-family: monospace; min-height: clamp(16px, 3vh, 24px); transition: color 0.5s; word-break: break-word;", if awake { if igris_mode { "#e9d5ff" } else { "#fce7f3" } } else { "#cffafe" }), "\"{command}\"" }
+                                    // Last command box (HUD style)
+                                    div { style: format!("width: min(88%, 580px); position: relative; padding: clamp(10px, 2vh, 14px) clamp(14px, 2vw, 22px); background: rgba(5,10,20,0.85); border: 1px solid rgba({}, 0.12); animation: hud-flicker 4s ease-in-out infinite;", accent_rgb),
+                                        // Corner brackets on command box
+                                        div { style: format!("position: absolute; top: -1px; left: -1px; width: 10px; height: 10px; border-left: 1px solid rgba({}, 0.25); border-top: 1px solid rgba({}, 0.25); animation: bracket-pulse 2s ease-in-out infinite; transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                        div { style: format!("position: absolute; top: -1px; right: -1px; width: 10px; height: 10px; border-right: 1px solid rgba({}, 0.25); border-top: 1px solid rgba({}, 0.25); animation: bracket-pulse 2s ease-in-out infinite 0.5s; transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                        div { style: format!("position: absolute; bottom: -1px; left: -1px; width: 10px; height: 10px; border-left: 1px solid rgba({}, 0.25); border-bottom: 1px solid rgba({}, 0.25); animation: bracket-pulse 2s ease-in-out infinite 1s; transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+                                        div { style: format!("position: absolute; bottom: -1px; right: -1px; width: 10px; height: 10px; border-right: 1px solid rgba({}, 0.25); border-bottom: 1px solid rgba({}, 0.25); animation: bracket-pulse 2s ease-in-out infinite 1.5s; transition: border-color 0.5s;", accent_rgb, accent_rgb) }
+
+                                        div { style: "font-size: clamp(9px, 1.2vw, 10px); letter-spacing: 2px; color: rgba(255,255,255,0.25); margin-bottom: clamp(4px, 1vh, 6px); text-transform: uppercase; font-family: monospace;",
+                                            "// LAST_INPUT"
+                                        }
+                                        div { style: format!("font-size: clamp(12px, 1.8vw, 16px); color: {}; font-family: 'JetBrains Mono', monospace; min-height: clamp(14px, 2.5vh, 20px); transition: color 0.5s; word-break: break-word; letter-spacing: 0.5px;", primary_color),
+                                            "> {command}"
+                                        }
                                     }
 
-                                    // Status dots + Running apps side by side
-                                    div { style: "display: flex; align-items: stretch; gap: 16px; width: min(90%, 600px);",
-                                        div { style: "flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);",
-                                            div { style: format!("font-size: 11px; letter-spacing: 1px; color: {}; text-transform: uppercase; transition: color 0.5s;", if awake { &primary_color } else { "#9ca3af" }),
-                                                if awake { "Listening" } else { "Standby" }
+                                    // Bottom HUD row: status + apps
+                                    div { style: "display: flex; align-items: stretch; gap: 12px; width: min(88%, 580px);",
+                                        // Status panel
+                                        div { style: "flex: 1; position: relative; padding: 14px; border-radius: 4px; background: rgba(5,10,20,0.8); border: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; align-items: center; gap: 6px;",
+                                            div { style: format!("font-size: 9px; letter-spacing: 2px; color: rgba(255,255,255,0.25); text-transform: uppercase; font-family: monospace; transition: color 0.5s;"),
+                                                ">> {status}"
                                             }
                                             div { style: "display: flex; gap: 4px;",
-                                                div { style: format!("width: 10px; height: 10px; background: {}; border-radius: 50%; animation: blink-1 1.2s ease-in-out infinite; transition: background 0.5s;", primary_color) }
-                                                div { style: format!("width: 10px; height: 10px; background: {}; border-radius: 50%; animation: blink-2 1.2s ease-in-out infinite 0.2s; transition: background 0.5s;", primary_color) }
-                                                div { style: format!("width: 10px; height: 10px; background: {}; border-radius: 50%; animation: blink-3 1.2s ease-in-out infinite 0.4s; transition: background 0.5s;", primary_color) }
+                                                for i in 0..3 {
+                                                    div { style: format!("width: 8px; height: 8px; border: 1px solid rgba({}, 0.3); background: {}; border-radius: 50%; animation: blink-{} 1.2s ease-in-out infinite; transition: background 0.5s;", accent_rgb, primary_color, (i + 1).to_string()) }
+                                                }
                                             }
-                                            div { style: "font-size: 11px; color: #6b7280; margin-top: 4px;", "{status}" }
+                                            div { style: "font-size: 9px; color: rgba(255,255,255,0.12); font-family: monospace; margin-top: 2px;",
+                                                if awake { "AUDIO_INPUT :: ACTIVE" } else { "STANDBY :: WAITING" }
+                                            }
                                         }
-                                        div { style: "flex: 2; padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);",
-                                            div { style: "font-size: 11px; letter-spacing: 1px; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase;", "Active Applications" }
+                                        // Apps panel
+                                        div { style: "flex: 2; position: relative; padding: 14px; border-radius: 4px; background: rgba(5,10,20,0.8); border: 1px solid rgba(255,255,255,0.04);",
+                                            div { style: "font-size: 9px; letter-spacing: 2px; color: rgba(255,255,255,0.2); margin-bottom: 8px; font-family: monospace;",
+                                                "// RUNNING_PROCESSES"
+                                            }
                                             if apps.is_empty() {
-                                                div { style: "font-size: 12px; color: #6b7280;", "No applications running" }
+                                                div { style: "font-size: 10px; color: rgba(255,255,255,0.12); font-family: monospace;", "<NONE>" }
                                             } else {
-                                                for app in apps.iter() {
-                                                    div { style: format!("font-size: 12px; color: {}; display: flex; align-items: center; gap: 6px; padding: 3px 0; transition: color 0.5s;", secondary_color),
-                                                        span { style: format!("width: 6px; height: 6px; background: {}; border-radius: 50%; transition: background 0.5s; flex-shrink: 0;", secondary_color) }
+                                                for (idx, app) in apps.iter().enumerate() {
+                                                    div { style: format!("font-size: 10px; color: rgba(255,255,255,0.35); display: flex; align-items: center; gap: 6px; padding: 2px 0; font-family: 'JetBrains Mono', monospace; transition: color 0.5s;"),
+                                                        span { style: format!("width: 4px; height: 4px; background: {}; flex-shrink: 0; border-radius: 50%; transition: background 0.5s;", secondary_color) }
                                                         "{app}"
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                }
+                            },
+                            Tab::Chat => rsx! {
+                                ChatPanel {
+                                    primary_color,
+                                    accent_rgb,
                                 }
                             },
                             Tab::FastSwap => rsx! {

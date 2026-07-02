@@ -148,6 +148,15 @@ impl EcoManager {
             .await
             .map_err(|e| EcoError::Transport(format!("TLS proxy error: {}", e)))?;
 
+        // ---- Store local device info for pairing ----
+        {
+            let device = self.local_device.read().await;
+            crate::eco::pairing::set_local_device_info(
+                device.id.to_string(),
+                device.name.clone(),
+            );
+        }
+
         // ---- Start ecosystem HTTP server (clipboard endpoint) ----
         let http_addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         let transport = self.transport.clone();

@@ -8,17 +8,16 @@
 /// Cost: ~500 tokens vs ~5000+ tokens for full reasoning.
 /// Timeout: 15s (matches full reasoning timeout).
 
-use crate::online::reasoning::OnlineReasoning;
 use crate::online::task_planner::{parse_llm_response, TaskPlan};
 
 /// Attempt to route a command through the lightweight intent router.
+/// Uses the fast model (Gemma 9B) for quick intent classification.
 /// Returns a TaskPlan if the LLM responds with valid tool calls, None otherwise.
 pub async fn route_intent(command: &str) -> Option<TaskPlan> {
-    let reasoning = OnlineReasoning::new().ok()?;
     let system_prompt = intent_router_prompt();
     let timeout = std::time::Duration::from_secs(15);
 
-    let fut = reasoning.reason(&system_prompt, command);
+    let fut = crate::online::reason_online_fast(&system_prompt, command);
     match tokio::time::timeout(timeout, fut).await {
         Ok(Ok(output)) => {
             let output = output.trim();

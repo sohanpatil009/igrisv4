@@ -187,6 +187,24 @@ pub async fn route_llm_tool(tool: &str, _args: &str, command_to_use: &str) -> St
             let _ = core::tts::speak(&response);
             response
         }
+        "get_news" => {
+            add_log("[News] Fetching world news...", LogLevel::Info);
+            let result = commands::web::get_news().await;
+            add_log(&format!("[News] Result: {} chars", result.len()), LogLevel::Success);
+            let _ = core::tts::speak("Here's your world news briefing.");
+            commands::web::open_world_monitor();
+            result
+        }
+        "get_finance_news" => {
+            add_log("[News] Fetching finance news...", LogLevel::Info);
+            let result = commands::web::get_finance_news().await;
+            add_log(&format!("[News] Result: {} chars", result.len()), LogLevel::Success);
+            let _ = core::tts::speak("Here's your financial news briefing.");
+            commands::web::open_finance_world_monitor();
+            result
+        }
+        "open_world_monitor" => commands::web::open_world_monitor(),
+        "open_finance_world_monitor" => commands::web::open_finance_world_monitor(),
         "get_weather" => {
             let location = extract_json_string_field(_args, "location").unwrap_or_default();
             add_log(&format!("[Weather] Fetching weather via wttr.in for: '{}'", location), LogLevel::Info);
@@ -475,6 +493,18 @@ pub async fn route_task_step(step: &TaskStep) -> String {
             commands::reminders::handle_reminder_command("reminder_set", &step.description)
                 .unwrap_or_else(|e| format!("Reminder error: {}", e))
         }
+        "get_news" => {
+            let result = commands::web::get_news().await;
+            commands::web::open_world_monitor();
+            result
+        }
+        "get_finance_news" => {
+            let result = commands::web::get_finance_news().await;
+            commands::web::open_finance_world_monitor();
+            result
+        }
+        "open_world_monitor" => commands::web::open_world_monitor(),
+        "open_finance_world_monitor" => commands::web::open_finance_world_monitor(),
         "get_weather" => {
             let location = extract_json_string_field(&step.args, "location")
                 .unwrap_or_default();

@@ -36,13 +36,13 @@ pub fn AlarmReminderPanel(primary_color: String, accent_rgb: String) -> Element 
 
     let mut cancel_alarm = move |id: u32| {
         REMINDER_MANAGER.remove_alarm(id);
-        msg.set("Alarm cancelled".to_string());
+        msg.set("Alarm terminated.".to_string());
         refresh_trigger.set(refresh_trigger() + 1);
     };
 
     let mut cancel_reminder = move |id: u32| {
         REMINDER_MANAGER.remove_reminder(id);
-        msg.set("Reminder cancelled".to_string());
+        msg.set("Reminder terminated.".to_string());
         refresh_trigger.set(refresh_trigger() + 1);
     };
 
@@ -53,53 +53,69 @@ pub fn AlarmReminderPanel(primary_color: String, accent_rgb: String) -> Element 
         .map(|r| (r.id, r.message.clone(), format!("{} at {}", format_date(&r.trigger_time), format_time(&r.trigger_time))))
         .collect();
 
+    let css = format!(r#"
+        .ar-section {{ margin-bottom: 28px; }}
+        .ar-section-title {{ font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.3); margin-bottom: 12px; font-family: 'JetBrains Mono', monospace; }}
+        .ar-card {{
+            position: relative; padding: 16px; border-radius: 4px;
+            background: linear-gradient(135deg, rgba(8,12,28,0.85), rgba(4,8,18,0.9));
+            border: 1px solid rgba(255,255,255,0.06); margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: space-between;
+            transition: all 0.3s ease; overflow: hidden;
+        }}
+        .ar-card::before {{
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        }}
+        .ar-card:hover {{ border-color: rgba({accent_rgb},0.25); background: linear-gradient(135deg, rgba(12,18,34,0.9), rgba(6,12,24,0.95)); }}
+        .ar-btn {{
+            padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer;
+            font-size: 10px; font-weight: 600; letter-spacing: 1px;
+            transition: all 0.2s; font-family: monospace; color: #fff;
+        }}
+        .ar-btn:hover {{ opacity: 0.8; }}
+        .ar-empty {{ color: rgba(255,255,255,0.25); font-size: 12px; padding: 32px 0; text-align: center; font-family: monospace; }}
+    "#, accent_rgb = accent_rgb);
+
     rsx! {
         div { style: format!("padding: 24px 32px; height: 100%; overflow-y: auto;"),
-            style { r#"
-                .ar-header {{ font-size: 22px; font-weight: bold; margin-bottom: 24px; letter-spacing: 0.5px; }}
-                .ar-section {{ margin-bottom: 28px; }}
-                .ar-section-title {{ font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #6b7280; margin-bottom: 12px; }}
-                .ar-card {{ padding: 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; transition: all 0.3s; }}
-                .ar-card:hover {{ background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.12); }}
-                .ar-btn {{ padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; color: #fff; }}
-                .ar-btn:hover {{ opacity: 0.8; }}
-                .ar-empty {{ color: #6b7280; font-size: 14px; padding: 24px 0; text-align: center; }}
-                .ar-badge {{ display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }}
-            "# }
+            style { "{css}" }
 
-            div { class: "ar-header", style: format!("color: {};", primary_color), "⏰ Alarms & Reminders" }
+            div { style: format!("font-size: 14px; font-weight: 700; color: {}; letter-spacing: 2px; font-family: 'JetBrains Mono', monospace; margin-bottom: 24px;", primary_color),
+                "// SCHEDULED TASKS"
+            }
 
             if !msg().is_empty() {
-                div { style: format!("padding: 10px 16px; border-radius: 8px; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #22c55e; font-size: 13px; margin-bottom: 16px;"),
-                    "{msg}"
+                div { style: format!("padding: 8px 14px; border-radius: 4px; background: rgba({}, 0.08); border: 1px solid rgba({}, 0.25); color: {}; font-size: 11px; margin-bottom: 16px; font-family: monospace;", accent_rgb, accent_rgb, primary_color),
+                    ">> {msg}"
                 }
             }
 
             div { class: "ar-section",
-                div { class: "ar-section-title", "Alarms" }
+                div { class: "ar-section-title", "// ALARM_SEQUENCE" }
                 if alarms_list.is_empty() {
-                    div { class: "ar-empty", "No active alarms. Say \"Set alarm for 7 am\" to add one." }
+                    div { class: "ar-empty", "<EMPTY> No alarms scheduled. Voice command: \"Set alarm for 7 AM\"" }
                 } else {
                     for (a_id, a_time, a_date) in alarms_list.clone().into_iter() {
                         div { class: "ar-card", key: "{a_id}",
                             div { style: "display: flex; align-items: center; gap: 12px;",
-                                span { style: "font-size: 24px;", "🔔" }
+                                span { style: "font-size: 18px;", "⏰" }
                                 div {
-                                    div { style: format!("font-size: 16px; font-weight: 600; color: {};", primary_color),
+                                    div { style: format!("font-size: 15px; font-weight: 600; color: {}; font-family: 'JetBrains Mono', monospace;", primary_color),
                                         "{a_time}"
                                     }
-                                    div { style: "font-size: 12px; color: #6b7280; margin-top: 2px;",
+                                    div { style: "font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; font-family: monospace;",
                                         "{a_date}"
                                     }
                                 }
                             }
                             div { style: "display: flex; align-items: center; gap: 8px;",
-                                div { class: "ar-badge", style: "background: rgba(34,197,94,0.15); color: #22c55e;", "Active" }
+                                span { style: "padding: 2px 8px; border-radius: 4px; font-size: 9px; letter-spacing: 1px; background: rgba(34,197,94,0.12); color: #22c55e; font-family: monospace; border: 1px solid rgba(34,197,94,0.2);", "ACTIVE" }
                                 button {
                                     class: "ar-btn",
-                                    style: "background: rgba(239,68,68,0.8);",
+                                    style: "background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444;",
                                     onclick: move |_| cancel_alarm(a_id),
-                                    "Cancel"
+                                    "CANCEL"
                                 }
                             }
                         }
@@ -108,30 +124,30 @@ pub fn AlarmReminderPanel(primary_color: String, accent_rgb: String) -> Element 
             }
 
             div { class: "ar-section",
-                div { class: "ar-section-title", "Reminders" }
+                div { class: "ar-section-title", "// REMINDER_QUEUE" }
                 if reminders_list.is_empty() {
-                    div { class: "ar-empty", "No active reminders. Say \"Remind me in 30 minutes\" to add one." }
+                    div { class: "ar-empty", "<EMPTY> No reminders pending. Voice command: \"Remind me in 30 minutes\"" }
                 } else {
                     for (r_id, r_msg, r_time) in reminders_list.clone().into_iter() {
                         div { class: "ar-card", key: "{r_id}",
                             div { style: "display: flex; align-items: center; gap: 12px;",
-                                span { style: "font-size: 24px;", "📌" }
+                                span { style: "font-size: 18px;", "📋" }
                                 div {
-                                    div { style: "font-size: 14px; font-weight: 500; color: #e5e7eb;",
+                                    div { style: "font-size: 13px; font-weight: 500; color: #d1d5db; font-family: 'JetBrains Mono', monospace;",
                                         "{r_msg}"
                                     }
-                                    div { style: "font-size: 12px; color: #6b7280; margin-top: 2px;",
+                                    div { style: "font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px; font-family: monospace;",
                                         "{r_time}"
                                     }
                                 }
                             }
                             div { style: "display: flex; align-items: center; gap: 8px;",
-                                div { class: "ar-badge", style: "background: rgba(59,130,246,0.15); color: #3b82f6;", "Pending" }
+                                span { style: "padding: 2px 8px; border-radius: 4px; font-size: 9px; letter-spacing: 1px; background: rgba(59,130,246,0.12); color: #3b82f6; font-family: monospace; border: 1px solid rgba(59,130,246,0.2);", "PENDING" }
                                 button {
                                     class: "ar-btn",
-                                    style: "background: rgba(239,68,68,0.8);",
+                                    style: "background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444;",
                                     onclick: move |_| cancel_reminder(r_id),
-                                    "Cancel"
+                                    "CANCEL"
                                 }
                             }
                         }

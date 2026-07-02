@@ -1,9 +1,100 @@
-// src/online/reasoning.rs - Online reasoning using GLM 5.1 via NVIDIA NIM
+// src/online/reasoning.rs - Online reasoning via provider-agnostic chat completions API
 
 use crate::config::CONFIG;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
+
+/// Supported LLM providers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LlmProvider {
+    Nvidia,
+    Openai,
+    Groq,
+    Google,
+}
+
+impl LlmProvider {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Nvidia => "NVIDIA NIM",
+            Self::Openai => "OpenAI",
+            Self::Groq => "Groq",
+            Self::Google => "Google Gemini",
+        }
+    }
+
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::Nvidia => "nvidia",
+            Self::Openai => "openai",
+            Self::Groq => "groq",
+            Self::Google => "google",
+        }
+    }
+
+    pub fn base_url(&self) -> &'static str {
+        match self {
+            Self::Nvidia => "https://integrate.api.nvidia.com/v1",
+            Self::Openai => "https://api.openai.com/v1",
+            Self::Groq => "https://api.groq.com/openai/v1",
+            Self::Google => "https://generativelanguage.googleapis.com/v1beta",
+        }
+    }
+
+    pub fn api_key_env(&self) -> &'static str {
+        match self {
+            Self::Nvidia => "NVIDIA_API_KEY",
+            Self::Openai => "OPENAI_API_KEY",
+            Self::Groq => "GROQ_API_KEY",
+            Self::Google => "GOOGLE_API_KEY",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "nvidia" => Self::Nvidia,
+            "openai" => Self::Openai,
+            "groq" => Self::Groq,
+            "google" => Self::Google,
+            _ => Self::Nvidia,
+        }
+    }
+
+    /// All providers as a slice.
+    pub fn all() -> &'static [Self] {
+        &[Self::Nvidia, Self::Openai, Self::Groq, Self::Google]
+    }
+}
+
+/// Available models across all providers.
+/// Each entry is (model_id, display_name).
+pub const AVAILABLE_MODELS: &[(&str, &str)] = &[
+    // NVIDIA
+    ("meta/llama-3.1-70b-instruct",            "Llama 3.1 70B (NVIDIA)"),
+    ("meta/llama-3.1-8b-instruct",             "Llama 3.1 8B (NVIDIA)"),
+    ("qwen/qwen3-next-80b-a3b-instruct",       "Qwen 3 80B MoE (NVIDIA)"),
+    ("qwen/qwen-2.5-72b-instruct",             "Qwen 2.5 72B (NVIDIA)"),
+    ("nvidia/llama-3.3-nemotron-super-49b-v1", "Nemotron 49B (NVIDIA)"),
+    ("nvidia/nemotron-4-340b-instruct",        "Nemotron 340B (NVIDIA)"),
+    ("mistralai/ministral-14b-instruct-2512",  "Ministral 14B (NVIDIA)"),
+    ("google/gemma-2-27b-it",                 "Gemma 2 27B (NVIDIA)"),
+    ("google/gemma-2-9b-it",                  "Gemma 2 9B (NVIDIA)"),
+    // OpenAI
+    ("gpt-4o",                                  "GPT-4o (OpenAI)"),
+    ("gpt-4o-mini",                             "GPT-4o Mini (OpenAI)"),
+    ("gpt-4-turbo",                             "GPT-4 Turbo (OpenAI)"),
+    ("o1-mini",                                 "o1 Mini (OpenAI)"),
+    // Groq
+    ("llama-3.3-70b-versatile",                 "Llama 3.3 70B (Groq)"),
+    ("llama-3.1-8b-instant",                    "Llama 3.1 8B (Groq)"),
+    ("mixtral-8x7b-32768",                      "Mixtral 8x7B (Groq)"),
+    ("gemma2-9b-it",                            "Gemma 2 9B (Groq)"),
+];
+
+/// Model used for fast tool routing and intent classification.
+/// Uses Llama 3.1 8B (confirmed available on NVIDIA NIM, very fast).
+pub const FAST_MODEL: &str = "meta/llama-3.1-8b-instruct";
 
 #[derive(Debug, Clone)]
 pub struct OnlineReasoning {
@@ -60,12 +151,16 @@ struct Usage {
 
 impl OnlineReasoning {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let api_key = env::var("NVIDIA_API_KEY")
-            .map_err(|_| "NVIDIA_API_KEY not set in .env")?;
+        let provider = LlmProvider::from_key(&crate::get_selected_provider());
+        Self::with_provider(provider)
+    }
 
-        let base_url = env::var("NVIDIA_NIM_BASE_URL")
-            .or_else(|_| env::var("NVIDIA_NIM_GLM_BASE_URL"))
-            .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string());
+    /// Create with a specific provider (reads the matching API key from env).
+    pub fn with_provider(provider: LlmProvider) -> Result<Self, Box<dyn std::error::Error>> {
+        let api_key = env::var(provider.api_key_env())
+            .map_err(|_| format!("{} not set in .env", provider.api_key_env()))?;
+
+        let base_url = provider.base_url().to_string();
 
         let model = env::var("NVIDIA_NIM_MODEL")
             .unwrap_or_else(|_| "meta/llama-3.1-8b-instruct".to_string());
@@ -78,6 +173,19 @@ impl OnlineReasoning {
             base_url,
             model,
         })
+    }
+
+    /// Override the model used for this reasoning session.
+    pub fn set_model(&mut self, model: &str) {
+        self.model = model.to_string();
+    }
+
+    /// Switch to a different provider (updates base_url + api_key from env).
+    pub fn set_provider(&mut self, provider: LlmProvider) -> Result<(), Box<dyn std::error::Error>> {
+        self.api_key = env::var(provider.api_key_env())
+            .map_err(|_| format!("{} not set in .env", provider.api_key_env()))?;
+        self.base_url = provider.base_url().to_string();
+        Ok(())
     }
 
     /// Run reasoning through NVIDIA NIM (OpenAI-compatible chat completions)
@@ -160,7 +268,8 @@ impl OnlineReasoning {
 
 impl Default for OnlineReasoning {
     fn default() -> Self {
-        Self::new().expect("Failed to create OnlineReasoning - check NVIDIA_API_KEY in .env")
+        Self::with_provider(LlmProvider::Nvidia)
+            .expect("Failed to create OnlineReasoning - check NVIDIA_API_KEY in .env")
     }
 }
 
@@ -184,16 +293,26 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
         \n\
         CAPABILITIES:\n\
         You have full control over this computer. You can open/close apps, search the web, control system settings,\n\
-        take screenshots, manage files, set reminders, check weather, access the camera, control clipboard, and more.\n\
+        take screenshots, manage files, set reminders, check weather, access the camera, control clipboard, fetch live news, and more.\n\
+        \n\
+        VOICE RULES (for spoken responses):\n\
+        - Keep responses to 2-4 sentences max. Short and natural.\n\
+        - No bullet points, no markdown, no lists — you're speaking, not writing.\n\
+        - Call tools silently and immediately — never say you are going to call a tool or let the user wait before calling.\n\
+        - Use natural spoken language: contractions, light pauses, colloquial tone.\n\
+        - Call tools the moment you recognize the user's intent — don't confirm first.\n\
+        - If a tool fails, report it calmly: That is not available right now. Offer to try something else.\n\
         \n\
         RULES:\n\
         - NEVER ask clarifying questions. If a request is ambiguous, use your best judgment and pick the most likely tool.\n\
         - Be concise in conversation. Short, natural responses.\n\
         - Use general_chat ONLY for pure greetings, farewells, compliments, thank yous, and chit-chat that has no actionable intent.\n\
         - For weather queries, ALWAYS use get_weather — never search_web and never general_chat.\n\
+        - For news queries, ALWAYS use get_news or get_finance_news - never search_web for news.\n\
         - For jokes, ALWAYS use tell_joke — never general_chat or search_web.\n\
         - For facts, ALWAYS use tell_fact — never general_chat or search_web.\n\
         - For questions about facts, news, or information, use search_web.\n\
+        - After delivering news, ALWAYS silently call open_world_monitor (or open_finance_world_monitor for finance) without announcing it.\n\
         - Output ONLY valid JSON. No markdown, no explanation, no extra text.\n\
         \n\
         Your response MUST be valid JSON. For a single action, use:\n\
@@ -234,8 +353,12 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
          18. write_file {{\"path\": \"...\", \"content\": \"...\"}} — Write content to a text file\n\
           19. compose_email {{\"to\": \"...\", \"subject\": \"...\", \"body\": \"...\"}} — Compose an email and open the default email client with fields pre-filled. The body must be URL-encoded. ALWAYS use this for email requests.\n\
           20. generate_code {{\"language\": \"python|rust|javascript|typescript|java|go|cpp|html|css|...\", \"code\": \"...\", \"filename\": \"...\"}} — Generate code in any language and save to a file, then open it in the available IDE (VS Code if installed) or default text editor. The LLM generates the complete code. ALWAYS use this for code generation requests.\n\
-         21. general_chat {{\"response\": \"...\"}} — Casual conversation, greetings, farewells\n\
-         22. switch_mode {{\"mode\": \"online|offline\"}} — Switch between online and offline mode",
+          21. get_news {{}} — Fetch latest world news headlines from multiple sources (BBC, CNBC, NYT, Al Jazeera). Use for questions about news, world events, current affairs. After calling, also silently call open_world_monitor.\n\
+          22. get_finance_news {{}} — Fetch latest financial/market news from multiple sources (CNBC Finance, Bloomberg, Reuters, MarketWatch). Use for market updates, stock news, financial news. After calling, also silently call open_finance_world_monitor.\n\
+          23. open_world_monitor {{}} — Open the world monitor dashboard (worldmonitor.app) in the browser. Call silently after get_news without being asked.\n\
+          24. open_finance_world_monitor {{}} — Open the finance world monitor dashboard (finance.worldmonitor.app) in the browser. Call silently after get_finance_news without being asked.\n\
+          25. general_chat {{\"response\": \"...\"}} — Casual conversation, greetings, farewells\n\
+          26. switch_mode {{\"mode\": \"online|offline\"}} — Switch between online and offline mode",
         name = name, personality_desc = personality_desc,
     );
 
@@ -248,9 +371,32 @@ pub fn online_tool_system_prompt(conversation_context: &str) -> String {
     prompt
 }
 
-/// Transcribe audio using online Parakeet ASR (NVIDIA NIM)
+/// Run online reasoning with the currently selected model and provider.
 pub async fn reason_online(system_prompt: &str, user_query: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let reasoning = OnlineReasoning::new()?;
+    let model = crate::get_selected_model();
+    let provider = LlmProvider::from_key(&crate::get_selected_provider());
+    let mut reasoning = OnlineReasoning::with_provider(provider)?;
+    reasoning.set_model(&model);
+    reasoning.reason(system_prompt, user_query).await
+}
+
+/// Run online reasoning with the fast model for tool routing / intent classification.
+/// Always uses NVIDIA provider (Gemma 9B) regardless of the user's chat provider selection.
+pub async fn reason_online_fast(system_prompt: &str, user_query: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut reasoning = OnlineReasoning::with_provider(LlmProvider::Nvidia)?;
+    reasoning.set_model(FAST_MODEL);
+    reasoning.reason(system_prompt, user_query).await
+}
+
+/// Run online reasoning with a specific model and provider (overrides SELECTED_MODEL and SELECTED_PROVIDER).
+pub async fn reason_online_with_model(
+    system_prompt: &str,
+    user_query: &str,
+    model: &str,
+    provider: LlmProvider,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut reasoning = OnlineReasoning::with_provider(provider)?;
+    reasoning.set_model(model);
     reasoning.reason(system_prompt, user_query).await
 }
 

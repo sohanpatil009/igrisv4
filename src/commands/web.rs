@@ -567,6 +567,151 @@ impl NearestArea {
     }
 }
 
+// ─── RSS News Aggregation ───────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct NewsArticle {
+    pub title: String,
+    pub description: String,
+    pub source: String,
+}
+
+/// World news RSS feeds
+const WORLD_NEWS_FEEDS: &[(&str, &str)] = &[
+    ("BBC", "https://feeds.bbci.co.uk/news/rss.xml"),
+    ("CNBC", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("NYT", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+    ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
+];
+
+/// Finance news RSS feeds
+const FINANCE_NEWS_FEEDS: &[(&str, &str)] = &[
+    ("CNBC Finance", "https://www.cnbc.com/id/10000664/device/rss/rss.html"),
+    ("Bloomberg", "https://feeds.bloomberg.com/markets/news.rss"),
+    ("Reuters", "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best&best-sectors=markets"),
+    ("MarketWatch", "https://feeds.marketwatch.com/marketwatch/topstories"),
+];
+
+fn parse_rss_items(xml: &str, source: &str) -> Vec<NewsArticle> {
+    let mut articles = Vec::new();
+    let item_re = regex::Regex::new(r"<item>(.*?)</item>").unwrap();
+    let title_re = regex::Regex::new(r"<title><!\[CDATA\[(.+?)\]\]></title>|<title>(.+?)</title>").unwrap();
+    let desc_re = regex::Regex::new(r"<description><!\[CDATA\[(.+?)\]\]></description>|<description>(.+?)</description>").unwrap();
+
+    for cap in item_re.captures_iter(xml) {
+        let item_xml = &cap[1];
+        let title = title_re.captures(item_xml)
+            .map(|t| t.get(1).or_else(|| t.get(2)).map(|m| m.as_str()).unwrap_or(""))
+            .unwrap_or("")
+            .to_string();
+        let description = desc_re.captures(item_xml)
+            .map(|d| {
+                let raw = d.get(1).or_else(|| d.get(2)).map(|m| m.as_str()).unwrap_or("");
+                let clean = regex::Regex::new(r"<[^>]+>").unwrap().replace_all(raw, " ");
+                let clean2 = regex::Regex::new(r"\s+").unwrap().replace_all(&clean, " ");
+                clean2.trim().to_string()
+            })
+            .unwrap_or_default();
+        if !title.is_empty() {
+            articles.push(NewsArticle { title, description, source: source.to_string() });
+        }
+    }
+    articles
+}
+
+async fn fetch_one_feed(source: &str, url: &str) -> Vec<NewsArticle> {
+    let client = match reqwest::Client::builder()
+        .user_agent("igris-news/1.0")
+        .timeout(std::time::Duration::from_secs(8))
+        .build() {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+    let resp = match client.get(url).send().await {
+        Ok(r) => r,
+        Err(_) => return vec![],
+    };
+    if !resp.status().is_success() { return vec![]; }
+    let text = resp.text().await.unwrap_or_default();
+    parse_rss_items(&text, source)
+}
+
+/// Fetch world news from multiple sources in parallel.
+pub async fn get_news() -> String {
+    let futures: Vec<_> = WORLD_NEWS_FEEDS.iter()
+        .map(|(src, url)| fetch_one_feed(src, url))
+        .collect();
+    let results: Vec<Vec<NewsArticle>> = futures::future::join_all(futures).await;
+
+    let mut all: Vec<NewsArticle> = results.into_iter().flatten().collect();
+    all.truncate(12);
+    if all.is_empty() {
+        return "No news available at the moment.".to_string();
+    }
+    let mut briefing = String::from("Here's your world news briefing:\n\n");
+    for (i, article) in all.iter().enumerate() {
+        briefing.push_str(&format!("{}. [{}] {}\n", i + 1, article.source, article.title));
+        if !article.description.is_empty() {
+            let desc = if article.description.len() > 120 {
+                format!("{}...", &article.description[..120])
+            } else {
+                article.description.clone()
+            };
+            briefing.push_str(&format!("   {}\n\n", desc));
+        }
+    }
+    briefing
+}
+
+/// Fetch finance news from multiple sources in parallel.
+pub async fn get_finance_news() -> String {
+    let futures: Vec<_> = FINANCE_NEWS_FEEDS.iter()
+        .map(|(src, url)| fetch_one_feed(src, url))
+        .collect();
+    let results: Vec<Vec<NewsArticle>> = futures::future::join_all(futures).await;
+
+    let mut all: Vec<NewsArticle> = results.into_iter().flatten().collect();
+    all.truncate(12);
+    if all.is_empty() {
+        return "No financial news available at the moment.".to_string();
+    }
+    let mut briefing = String::from("Here's your financial news briefing:\n\n");
+    for (i, article) in all.iter().enumerate() {
+        briefing.push_str(&format!("{}. [{}] {}\n", i + 1, article.source, article.title));
+        if !article.description.is_empty() {
+            let desc = if article.description.len() > 120 {
+                format!("{}...", &article.description[..120])
+            } else {
+                article.description.clone()
+            };
+            briefing.push_str(&format!("   {}\n\n", desc));
+        }
+    }
+    briefing
+}
+
+/// Open the world monitor dashboard in the browser.
+pub fn open_world_monitor() -> String {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("https://worldmonitor.app/").spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", "https://worldmonitor.app/"]).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg("https://worldmonitor.app/").spawn();
+    "Opening world monitor dashboard.".to_string()
+}
+
+/// Open the finance world monitor dashboard in the browser.
+pub fn open_finance_world_monitor() -> String {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("https://finance.worldmonitor.app/").spawn();
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", "https://finance.worldmonitor.app/"]).spawn();
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg("https://finance.worldmonitor.app/").spawn();
+    "Opening finance world monitor dashboard.".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
