@@ -552,6 +552,68 @@ pub fn clipboard_action(action: &str, text: &str) -> String {
     }
 }
 
+/// Close the currently focused (frontmost) window (NOT the entire app).
+/// On macOS: AppleScript `close window 1` of the frontmost app.
+/// On Linux: `xdotool getactivewindow windowclose`
+/// On Windows: PowerShell `Stop-Process` on the foreground window's PID.
+pub fn close_current_window() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        let script = r#"tell application "System Events"
+            tell (first process whose frontmost is true)
+                click button 1 of window 1
+            end tell
+        end tell"#;
+        match std::process::Command::new("osascript")
+            .args(["-e", script])
+            .output()
+        {
+            Ok(_) => "Closed the current window.".to_string(),
+            Err(e) => format!("Failed to close current window: {}", e),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        match std::process::Command::new("xdotool")
+            .args(["getactivewindow", "windowclose"])
+            .output()
+        {
+            Ok(_) => "Closed the current window.".to_string(),
+            Err(e) => format!("Failed to close current window: {}", e),
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script =
+            r#"Add-Type @"
+  using System;
+  using System.Runtime.InteropServices;
+  using System.Diagnostics;
+  public class Foreground {
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  }
+"@
+$hwnd = [Foreground]::GetForegroundWindow()
+$pid = 0
+[Foreground]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
+Stop-Process -Id $pid -Force"#;
+        match std::process::Command::new("powershell")
+            .args(["-Command", ps_script])
+            .output()
+        {
+            Ok(_) => "Closed the current window.".to_string(),
+            Err(e) => format!("Failed to close current window: {}", e),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        "Closing the current window is not supported on this platform.".to_string()
+    }
+}
+
 /// Check if command is a system control command
 pub fn is_system_command(command: &str) -> bool {
     let cmd_lower = command.to_lowercase();

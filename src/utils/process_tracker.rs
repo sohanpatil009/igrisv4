@@ -246,6 +246,32 @@ pub fn get_process_count(category: ProcessCategory) -> usize {
     }
 }
 
+/// Get all tracked process names (for context awareness)
+pub fn get_tracked_app_names() -> Vec<String> {
+    if let Ok(tracker) = PROCESS_TRACKER.lock() {
+        tracker.get_by_category(ProcessCategory::App)
+            .iter()
+            .map(|p| p.name.clone())
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+/// Get total count of all tracked processes
+pub fn get_total_tracked_count() -> usize {
+    if let Ok(tracker) = PROCESS_TRACKER.lock() {
+        tracker.get_all().len()
+    } else {
+        0
+    }
+}
+
+/// Get tracked app count (convenience wrapper)
+pub fn get_tracked_app_count() -> usize {
+    get_process_count(ProcessCategory::App)
+}
+
 // ============================================================================
 // Web resource tracking - maps opened sites to the browser that opened them
 // ============================================================================

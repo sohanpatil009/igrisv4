@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 use igrisv3::{
-    core, ui, fastswap, online, utils, RESET_FLAG,
+    core, ui, fastswap, online, utils, RESET_FLAG, FORCE_LISTEN,
 };
 use igrisv3::core::stt::{init_stt_engine, SttEngine, hybrid_transcribe_audio};
 use igrisv3::core::wake_word::{listen_for_wake_word, listen_for_wake_word_async};
@@ -157,6 +157,44 @@ pub async fn start_voice_assistant() {
 
     // Main wake word loop
     loop {
+        // Check for force-listen signal from hotkey (skip wake word, enter listening mode)
+        if FORCE_LISTEN.swap(false, Ordering::Relaxed) {
+            add_log("Hotkey forced wake - entering listening mode", LogLevel::Info);
+            {
+                let mut state = ASSISTANT_STATE.lock().unwrap();
+                state.is_awake = true;
+                state.is_listening = false;
+            }
+            update_status("Awake - Listening for command");
+            let _ = core::tts::speak("Yes, I'm listening. What can I do for you?");
+            match continuous_listening_mode(stt_engine.as_ref()).await {
+                Ok(should_exit) => {
+                    if should_exit {
+                        {
+                            let mut state = ASSISTANT_STATE.lock().unwrap();
+                            state.is_awake = false;
+                        }
+                        update_status("Shutting down...");
+                        add_log("Goodbye!", LogLevel::Info);
+                        let _ = core::tts::speak("Goodbye! See you next time.");
+                        cleanup_and_exit();
+                    } else {
+                        let mut state = ASSISTANT_STATE.lock().unwrap();
+                        state.is_awake = false;
+                    }
+                }
+                Err(e) => {
+                    {
+                        let mut state = ASSISTANT_STATE.lock().unwrap();
+                        state.is_awake = false;
+                    }
+                    add_log(&format!("Error: {}", e), LogLevel::Error);
+                    let _ = core::tts::speak("I encountered an error. Going back to sleep.");
+                }
+            }
+            continue;
+        }
+
         // Check for reset signal from hotkey
         if RESET_FLAG.swap(false, Ordering::Relaxed) {
             add_log("Reset signal received - restarting from wake word", LogLevel::Info);
@@ -255,6 +293,9 @@ pub async fn continuous_listening_mode(
         let mut state = ASSISTANT_STATE.lock().unwrap();
         state.is_listening = true;
     }
+
+    // Consume any FORCE_LISTEN flag that arrived while entering — no-op inside listen mode
+    FORCE_LISTEN.swap(false, Ordering::Relaxed);
 
     loop {
         // Check for reset signal from hotkey - bail out to wake word loop

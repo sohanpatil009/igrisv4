@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 use igrisv3::{
     config, utils, setup_manager, fastswap, online,
-    SEARCH_STATE, RESET_FLAG,
+    SEARCH_STATE, RESET_FLAG, FORCE_LISTEN,
 };
 use igrisv3::config::CONFIG;
 use igrisv3::setup_manager::gui::{is_setup_complete, SetupGui};
@@ -38,11 +38,8 @@ use crate::voice::*;
 
 fn main() {
     if let Err(e) = utils::hotkey::register_global_hotkey(|| {
-        println!("[HOTKEY] Ctrl+Shift+Space pressed - Resetting IGRIS");
-        RESET_FLAG.store(true, Ordering::Relaxed);
-        if let Err(e) = utils::greetings::speak_invoke_greeting() {
-            eprintln!("[HOTKEY] Failed to speak greeting: {}", e);
-        }
+        println!("[HOTKEY] Ctrl+Shift+Space pressed - Forcing listen mode");
+        FORCE_LISTEN.store(true, Ordering::Relaxed);
     }) {
         eprintln!("[HOTKEY] Failed to register global hotkey: {}", e);
         eprintln!("[HOTKEY] You can still use the application window");

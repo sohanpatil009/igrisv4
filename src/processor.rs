@@ -6,6 +6,7 @@ use igrisv3::{
 };
 use igrisv3::core::stt::SttEngine;
 use igrisv3::nlu::engine::GLOBAL_NLU;
+use igrisv3::nlu::context;
 use igrisv3::online::reasoning::{extract_json_string_field, parse_tool_call, parse_tool_calls};
 use igrisv3::online::task_planner::{self, TaskPlan, TaskStep};
 
@@ -14,6 +15,7 @@ use igrisv3::core::local_llm::{is_local_llm_ready, global_reason, default_tool_s
 
 use crate::state::*;
 use crate::tools::*;
+use crate::tools::command_modifier::{self, Modification};
 
 pub async fn process_voice_command(
     command: &str,
@@ -57,13 +59,106 @@ pub async fn process_voice_command(
         cleanup_and_exit();
     }
 
+    // ── Self-describe capabilities ──
+    if cmd_lower.contains("what can you do")
+        || cmd_lower.contains("what are your capabilities")
+        || cmd_lower.contains("list your capabilities")
+        || cmd_lower.contains("list your features")
+        || cmd_lower.contains("show me what you can do")
+        || cmd_lower.contains("what do you do")
+        || cmd_lower.contains("tell me your features")
+        || cmd_lower.contains("your skills")
+        || cmd_lower.contains("list commands")
+        || cmd_lower.contains("what tools do you have")
+    {
+        add_log("[Info] Describing capabilities", LogLevel::Info);
+        let description = crate::tools::registry::describe_capabilities();
+        add_log(&description, LogLevel::Success);
+        let _ = core::tts::speak("I have many capabilities. Let me list them.");
+        // Speak in chunks for long descriptions
+        for line in description.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('[') {
+                let _ = core::tts::speak(trimmed);
+            }
+        }
+        nlu::context::add_to_context(
+            command.to_string(),
+            "Listed capabilities".to_string(),
+            "list_capabilities".to_string(),
+            vec![],
+        );
+        return Ok(false);
+    }
+
+    // ── Undo command ──
+    if is_undo_command(&cmd_lower) {
+        add_log("[Undo] Reverse last action", LogLevel::Info);
+        if let Some(record) = context::pop_undo() {
+            if let (Some(reverse_tool), Some(reverse_args)) = (record.reverse_tool, record.reverse_args) {
+                add_log(
+                    &format!("[Undo] Reversing {} with {} ({})", record.tool, reverse_tool, reverse_args),
+                    LogLevel::Info,
+                );
+                let _ = core::tts::speak(&format!("Undoing the last action."));
+                let result = crate::tools::registry::execute_registered_tool(
+                    &reverse_tool, &reverse_args, &format!("undo {}", record.tool),
+                ).await.unwrap_or_else(|| "Undo completed.".to_string());
+                add_log(&format!("[Undo] Result: {}", result), LogLevel::Success);
+            } else {
+                let _ = core::tts::speak("I can't undo that action automatically.");
+            }
+        } else {
+            let _ = core::tts::speak("There's nothing to undo.");
+        }
+        return Ok(false);
+    }
+
+    // ── Command modification detection ──
+    let modification = command_modifier::detect_modification(command);
+    match &modification {
+        Modification::Replace(new_cmd) => {
+            add_log(
+                &format!("[Modifier] Detected replacement: '{}' → '{}'", command, new_cmd),
+                LogLevel::Info,
+            );
+            // Fall through to normal processing with modified command
+        }
+        Modification::Retry => {
+            add_log("[Modifier] Retry detected", LogLevel::Info);
+            let _ = core::tts::speak("Let me try that again.");
+            if let Some(last_cmd) = context::get_recent_context(1).first().map(|t| t.user_input.clone()) {
+                // Recursive call with the last command (boxed to avoid infinitely-sized future)
+                return Box::pin(process_voice_command(&last_cmd, _stt_engine)).await;
+            }
+            return Ok(false);
+        }
+        Modification::Undo => {
+            // Already handled above
+            return Ok(false);
+        }
+        Modification::ChangeParam { param, value } => {
+            add_log(
+                &format!("[Modifier] Change param: {} → {}", param, value),
+                LogLevel::Info,
+            );
+        }
+        Modification::None => {}
+    }
+
+    // If replacement detected, use the modified command instead
+    let effective_command = match &modification {
+        Modification::Replace(new_cmd) => new_cmd.as_str(),
+        _ => command,
+    };
+
     // Resolve references using context memory (it, that, this, etc.)
-    let resolved_command = nlu::context::resolve_references(command);
-    let command_to_use = if resolved_command != command {
-        add_log(&format!("Resolved: {} → {}", command, resolved_command), LogLevel::Info);
+    let resolved_command = nlu::context::resolve_references(effective_command);
+    let command_to_use = if resolved_command != effective_command {
+        add_log(&format!("Resolved: {} → {}", effective_command, resolved_command), LogLevel::Info);
         &resolved_command
     } else {
-        command
+        effective_command
     };
 
     // PRIORITY: Check for "about igris" / "tell me about yourself" BEFORE plugins
@@ -95,6 +190,97 @@ pub async fn process_voice_command(
             }
         }
         return Ok(false);
+    }
+
+    // ── Close this / current tab ──
+    if (cmd_lower.contains("close") && cmd_lower.contains("this tab"))
+        || (cmd_lower.contains("close") && cmd_lower.contains("current tab"))
+        || (cmd_lower.contains("close") && cmd_lower.contains("this file"))
+        || (cmd_lower.contains("close") && cmd_lower.contains("current file"))
+        || cmd_lower == "close tab"
+        || cmd_lower == "close file"
+    {
+        add_log("[Tab] Close current tab/file", LogLevel::Info);
+        let msg = commands::browser_automation::close_current_tab();
+        add_log(&msg, LogLevel::Success);
+        let _ = core::tts::speak(&msg);
+        nlu::context::add_to_context(
+            command.to_string(), msg.clone(), "close_current_tab".to_string(), vec![],
+        );
+        return Ok(false);
+    }
+
+    // ── Close this / current window ──
+    if (cmd_lower.contains("close") && cmd_lower.contains("this window"))
+        || (cmd_lower.contains("close") && cmd_lower.contains("current window"))
+        || (cmd_lower.contains("close") && cmd_lower.contains("that window"))
+        || cmd_lower == "close this"
+        || cmd_lower == "close that"
+    {
+        add_log("[Window] Close current window", LogLevel::Info);
+        let msg = commands::system::close_current_window();
+        add_log(&msg, LogLevel::Success);
+        let _ = core::tts::speak(&msg);
+        nlu::context::add_to_context(
+            command.to_string(), msg.clone(), "close_current_window".to_string(), vec![],
+        );
+        return Ok(false);
+    }
+
+    // ── Switch tab / window ──
+    if (cmd_lower.contains("switch") || cmd_lower.contains("go to"))
+        && (cmd_lower.contains("tab") || cmd_lower.contains("window"))
+    {
+        if cmd_lower.contains("previous") || cmd_lower.contains("back") || cmd_lower.contains("last") {
+            if cmd_lower.contains("window") {
+                add_log("[Window] Switch to previous window", LogLevel::Info);
+                let msg = commands::browser_automation::switch_previous_window();
+                add_log(&msg, LogLevel::Success);
+                let _ = core::tts::speak(&msg);
+                return Ok(false);
+            } else {
+                add_log("[Tab] Switch to previous tab", LogLevel::Info);
+                let msg = commands::browser_automation::switch_previous_tab();
+                add_log(&msg, LogLevel::Success);
+                let _ = core::tts::speak(&msg);
+                return Ok(false);
+            }
+        }
+    }
+
+    // ── How many windows / apps are open? ──
+    if cmd_lower.contains("how many")
+        && (cmd_lower.contains("window") || cmd_lower.contains("app"))
+    {
+        let count = utils::get_tracked_app_count();
+        let names = utils::get_tracked_app_names();
+        let msg = if count == 0 {
+            "I haven't opened any windows or applications.".to_string()
+        } else {
+            let list = names.join(", ");
+            format!("I have opened {} window{}. {}", count, if count == 1 { "" } else { "s" }, list)
+        };
+        add_log(&msg, LogLevel::Success);
+        let _ = core::tts::speak(&msg);
+        nlu::context::add_to_context(
+            command.to_string(), msg.clone(), "window_count".to_string(), vec![],
+        );
+        return Ok(false);
+    }
+
+    // ── Site-specific search: "search for X on Y" / "search amazon for headphones" ──
+    if commands::browser_automation::is_site_search_command(command_to_use) {
+        add_log("[SiteSearch] Detected site-specific search", LogLevel::Info);
+        if let Some(response) = commands::browser_automation::handle_site_search_command(command_to_use).await {
+            add_log(&response, LogLevel::Success);
+            nlu::context::add_to_context(
+                command.to_string(),
+                response.clone(),
+                "site_search".to_string(),
+                vec![],
+            );
+            return Ok(false);
+        }
     }
 
     // Check for online/offline mode switch
@@ -828,4 +1014,20 @@ pub async fn process_voice_command(
     }
 
     Ok(false)
+}
+
+fn is_undo_command(cmd_lower: &str) -> bool {
+    let trimmed = cmd_lower.trim();
+    trimmed == "undo"
+        || trimmed == "undo that"
+        || trimmed == "undo it"
+        || trimmed == "nevermind"
+        || trimmed == "never mind"
+        || trimmed == "go back"
+        || trimmed == "revert"
+        || trimmed == "revert that"
+        || trimmed == "that's wrong"
+        || trimmed == "thats wrong"
+        || trimmed == "not what i wanted"
+        || trimmed == "that's not what i wanted"
 }

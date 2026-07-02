@@ -55,30 +55,38 @@ fn intent_router_prompt() -> String {
 
 Available tools:
 1. open_app {"app": "name"} — Open any application (chrome, firefox, vscode, spotify, discord, etc.)
-2. close_app {"app": "name"} — Close a running application
-3. close_all_apps {} — Close all running applications
-4. search_web {"query": "..."} — Search the web and read results aloud (use for facts, questions, news only)
-5. open_website {"url": "...", "browser": "chrome|firefox|safari|edge|brave"} — Open a URL in the specified browser (omit browser to use default). Include the browser name if the user mentions one. Works with http://, https://, and mailto: URIs. PREFERRED for all browser + search combos.
-6. system_command {"command": "shutdown|restart|sleep|lock|volume_up|volume_down|mute"} — System control
-7. camera_action {"action": "photo|video_start|video_stop"} — Camera operations
-8. file_operation {"action": "create|delete|open|list|read|write", "path": "..."} — File operations
-9. set_alarm {"time": "..."} — Set an alarm
-10. set_reminder {"text": "..."} — Set a reminder
-11. get_weather {"location": "city name"} — Get weather for any city
-12. tell_fact {} — Tell an interesting fact
-13. tell_joke {} — Tell a joke
-14. take_screenshot {} — Take a screenshot
-15. get_system_info {"info": "os|memory|cpu|ip|uptime|all"} — System information
-16. clipboard_action {"action": "read|write", "text": "..."} — Clipboard operations
-17. read_file {"path": "..."} — Read a text file
-18. write_file {"path": "...", "content": "..."} — Write a text file
-19. compose_email {"to": "...", "subject": "...", "body": "..."} — Compose an email and open the default email client
-20. generate_code {"language": "...", "code": "...", "filename": "..."} — Generate code and open in IDE
-21. general_chat {"response": "..."} — Greetings, farewells, casual chat
-22. switch_mode {"mode": "online|offline"} — Switch between online and offline
+2. close_app {"app": "name"} — Close a named application by name
+3. close_all_apps {} — Close all windows/applications launched by IGRIS (use for "close everything", "close all windows", "close all my apps")
+4. close_current_window {} — Close the currently focused window (use for "close this window", "close this", "close the current window")
+5. close_current_tab {} — Close the currently focused tab (use for "close this tab", "close this file", "close the current tab", "close tab")
+5. search_web {"query": "..."} — Search the web and read results aloud (use for facts, questions, news only)
+6. browser_search {"site": "amazon|youtube|github|wikipedia|reddit|...", "query": "..."} — Search for something on a specific site. PREFERRED for "search for X on Y" patterns (amazon, youtube, github, etc.)
+7. open_website {"url": "...", "browser": "chrome|firefox|safari|edge|brave"} — Open a URL in the specified browser (omit browser to use default). Include the browser name if the user mentions one. Works with http://, https://, and mailto: URIs. PREFERRED for all browser + search combos.
+8. system_command {"command": "shutdown|restart|sleep|lock|volume_up|volume_down|mute"} — System control
+9. camera_action {"action": "photo|video_start|video_stop"} — Camera operations
+10. file_operation {"action": "create|delete|open|list|read|write", "path": "..."} — File operations
+11. set_alarm {"time": "..."} — Set an alarm
+12. set_reminder {"text": "..."} — Set a reminder
+13. get_weather {"location": "city name"} — Get weather for any city
+14. tell_fact {} — Tell an interesting fact
+15. tell_joke {} — Tell a joke
+16. take_screenshot {} — Take a screenshot
+17. get_system_info {"info": "os|memory|cpu|ip|uptime|all"} — System information
+18. clipboard_action {"action": "read|write", "text": "..."} — Clipboard operations
+19. read_file {"path": "..."} — Read a text file
+20. write_file {"path": "...", "content": "..."} — Write a text file
+21. compose_email {"to": "...", "subject": "...", "body": "..."} — Compose an email and open the default email client
+22. generate_code {"language": "...", "code": "...", "filename": "..."} — Generate code and open in IDE (extension auto-detected from language)
+23. general_chat {"response": "..."} — Greetings, farewells, casual chat
+24. switch_mode {"mode": "online|offline"} — Switch between online and offline
+25. switch_previous_tab {} — Switch to the previous tab (use for "switch tab", "go back a tab", "previous tab", "switch to previous tab")
+26. switch_previous_window {} — Switch to the previous window of the same app (use for "switch window", "previous window")
 
 CRITICAL RULES:
 - NEVER use open_app + search_web as separate steps for browser searches
+- "search for headphones on amazon" → {"tool": "browser_search", "args": {"site": "amazon", "query": "headphones"}}
+- "search youtube for rust tutorials" → {"tool": "browser_search", "args": {"site": "youtube", "query": "rust tutorials"}}
+- "search for cats" → {"tool": "open_website", "args": {"url": "https://www.google.com/search?q=cats"}}
 - "open chrome and search for cats" → {"tool": "open_website", "args": {"url": "https://www.google.com/search?q=cats", "browser": "chrome"}}
 - "search for weather in London" → {"tool": "open_website", "args": {"url": "https://www.google.com/search?q=weather+in+london"}}
 - "open safari and go to youtube" → {"tool": "open_website", "args": {"url": "https://youtube.com", "browser": "safari"}}

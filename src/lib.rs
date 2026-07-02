@@ -145,6 +145,9 @@ pub fn get_selected_provider() -> String {
 // Reset flag - set by global hotkey to restart voice loop from wake word detection
 pub static RESET_FLAG: AtomicBool = AtomicBool::new(false);
 
+// Force listen flag - set by global hotkey to skip wake word and enter continuous listening mode directly
+pub static FORCE_LISTEN: AtomicBool = AtomicBool::new(false);
+
 // Re-export camera panel state from commands module
 pub use commands::ffmpeg_camera::{CameraPanelState, CAMERA_PANEL_STATE};
 

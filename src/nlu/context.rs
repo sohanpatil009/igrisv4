@@ -368,6 +368,124 @@ pub fn clear_context() {
     GLOBAL_CONTEXT.lock().unwrap().clear();
 }
 
+/// ── Undo / Reversible action stack ──────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct UndoRecord {
+    pub tool: String,
+    pub args: String,
+    pub result: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// A reverse action that can undo this one (e.g. close_app to undo open_app)
+    pub reverse_tool: Option<String>,
+    pub reverse_args: Option<String>,
+}
+
+pub static UNDO_STACK: once_cell::sync::Lazy<std::sync::Mutex<Vec<UndoRecord>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Push a completed action onto the undo stack with an automatic reverse action.
+pub fn push_undo(tool: &str, args: &str, result: &str) {
+    let (reverse_tool, reverse_args) = compute_reverse(tool, args, result);
+    let record = UndoRecord {
+        tool: tool.to_string(),
+        args: args.to_string(),
+        result: result.to_string(),
+        timestamp: chrono::Utc::now(),
+        reverse_tool,
+        reverse_args,
+    };
+    if let Ok(mut stack) = UNDO_STACK.lock() {
+        stack.push(record);
+        if stack.len() > 20 {
+            stack.remove(0);
+        }
+    }
+}
+
+/// Pop the last undo record.
+pub fn pop_undo() -> Option<UndoRecord> {
+    UNDO_STACK.lock().ok().and_then(|mut s| s.pop())
+}
+
+/// Peek at the last undo record without removing it.
+pub fn peek_undo() -> Option<UndoRecord> {
+    UNDO_STACK.lock().ok().and_then(|s| s.last().cloned())
+}
+
+/// Compute the reverse action for a given tool call.
+fn compute_reverse(tool: &str, args: &str, _result: &str) -> (Option<String>, Option<String>) {
+    match tool {
+        "open_app" => {
+            if let Some(app) = extract_json_field(args, "app") {
+                (Some("close_app".to_string()), Some(format!("{{\"app\":\"{}\"}}", app)))
+            } else {
+                (None, None)
+            }
+        }
+        "close_app" => {
+            // Can't easily re-open, but we note it
+            (None, None)
+        }
+        "camera_action" => {
+            if args.contains("video_start") {
+                (Some("camera_action".to_string()), Some("{\"action\":\"video_stop\"}".to_string()))
+            } else {
+                (None, None)
+            }
+        }
+        "write_file" | "file_operation" => {
+            // Record what was written so delete can undo
+            (Some("file_operation".to_string()), Some(format!("{{\"action\":\"delete\",\"path\":{}}}", args)))
+        }
+        "system_command" => {
+            if args.contains("volume_up") {
+                (Some("system_command".to_string()), Some("{\"command\":\"volume_down\"}".to_string()))
+            } else if args.contains("volume_down") {
+                (Some("system_command".to_string()), Some("{\"command\":\"volume_up\"}".to_string()))
+            } else if args.contains("mute") {
+                (Some("system_command".to_string()), Some("{\"command\":\"unmute\"}".to_string()))
+            } else {
+                (None, None)
+            }
+        }
+        "switch_mode" => {
+            if args.contains("online") {
+                (Some("switch_mode".to_string()), Some("{\"mode\":\"offline\"}".to_string()))
+            } else {
+                (Some("switch_mode".to_string()), Some("{\"mode\":\"online\"}".to_string()))
+            }
+        }
+        _ => (None, None),
+    }
+}
+
+fn extract_json_field(json: &str, field: &str) -> Option<String> {
+    let pattern = format!("\"{}\"\\s*:\\s*\"([^\"]+)\"", field);
+    let re = regex::Regex::new(&pattern).ok()?;
+    re.captures(json)?.get(1).map(|m| m.as_str().to_string())
+}
+
+#[cfg(test)]
+mod undo_tests {
+    use super::*;
+
+    #[test]
+    fn test_open_app_reverse() {
+        let (tool, args) = compute_reverse("open_app", "{\"app\":\"chrome\"}", "Opened Chrome");
+        assert_eq!(tool, Some("close_app".to_string()));
+        assert!(args.unwrap().contains("chrome"));
+    }
+
+    #[test]
+    fn test_undo_push_pop() {
+        push_undo("open_app", "{\"app\":\"chrome\"}", "Opened Chrome");
+        let record = pop_undo();
+        assert!(record.is_some());
+        assert_eq!(record.unwrap().tool, "open_app");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

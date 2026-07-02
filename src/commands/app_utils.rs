@@ -82,7 +82,7 @@ pub fn list_running_apps() -> Vec<String> {
     }
 }
 
-/// Get count of tracked apps (stub implementation)
+/// Get count of tracked apps (delegates to process_tracker)
 pub fn get_tracked_app_count() -> usize {
-    0 // No longer tracking in new system
+    crate::utils::get_tracked_app_count()
 }

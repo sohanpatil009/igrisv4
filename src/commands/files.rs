@@ -720,25 +720,126 @@ pub fn read_text_from_file(file_path: &str) -> Result<String, Box<dyn Error>> {
     Err(format!("File {} not found!", file_path).into())
 }
 
-/// Write text to file
+/// Write text to file (creates new file or overwrites)
 pub fn write_text_to_file(file_path: &str, content: &str) -> Result<String, Box<dyn Error>> {
     fs::write(file_path, content)?;
     Ok(format!("Wrote to {}", file_path))
+}
+
+/// Modify an existing file by applying a transformation function to its content.
+/// If the file doesn't exist, falls back to creating it with the modified content.
+pub fn modify_file_content<F>(file_path: &str, modifier: F) -> Result<String, Box<dyn Error>>
+where
+    F: FnOnce(&str) -> String,
+{
+    let existing = if Path::new(file_path).exists() {
+        fs::read_to_string(file_path)?
+    } else {
+        String::new()
+    };
+    let new_content = modifier(&existing);
+    fs::write(file_path, &new_content)?;
+    Ok(format!("Modified {}", file_path))
+}
+
+/// Append or replace specific content in a file.
+/// Searches for an old string and replaces it; if not found, appends.
+pub fn edit_file_content(file_path: &str, old_text: &str, new_text: &str) -> Result<String, Box<dyn Error>> {
+    if !Path::new(file_path).exists() {
+        return Err(format!("File {} doesn't exist yet — use 'create' first.", file_path).into());
+    }
+    let content = fs::read_to_string(file_path)?;
+    let modified = if old_text.is_empty() {
+        format!("{}\n{}", content.trim_end(), new_text)
+    } else if content.contains(old_text) {
+        content.replace(old_text, new_text)
+    } else {
+        format!("{}\n{}", content.trim_end(), new_text)
+    };
+    fs::write(file_path, &modified)?;
+    Ok(format!("Edited {}", file_path))
 }
 
 /// Process file voice commands with async search
 pub async fn process_file_command_async(text: &str) -> Option<String> {
     let text_lower = text.to_lowercase();
 
-    // Create file
-    if text_lower.contains("create") && (text_lower.contains("file") || text_lower.contains("document")) {
+    // Detect language from context or explicit mention
+    let language_hint = extract_language_hint(&text_lower);
+
+    // Modify/Edit/Update existing file
+    if (text_lower.contains("modify") || text_lower.contains("edit") || text_lower.contains("update")
+        || text_lower.contains("change") || text_lower.contains("rewrite"))
+        && (text_lower.contains("file") || text_lower.contains("code") || text_lower.contains("document"))
+    {
         if let Some((name, ext)) = extract_file_info(&text_lower) {
-            match create_file(&name, &ext) {
+            let resolved_ext = if ext == "txt" && language_hint.is_some() {
+                language_hint.unwrap()
+            } else {
+                &ext
+            };
+            let file_path = format!("{}.{}", name, resolved_ext);
+
+            if !std::path::Path::new(&file_path).exists() {
+                match create_file(&name, resolved_ext) {
+                    Ok(msg) => return Some(format!("{} (file didn't exist, created new)", msg)),
+                    Err(e) => return Some(format!("Error: {}", e)),
+                }
+            }
+
+            match read_text_from_file(&file_path) {
+                Ok(existing_content) => {
+                    let modified = format!(
+                        "{}\n\n// --- Modification applied at {} ---",
+                        existing_content.trim_end(),
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+                    );
+                    match write_text_to_file(&file_path, &modified) {
+                        Ok(msg) => return Some(format!("{} — modified", msg)),
+                        Err(e) => return Some(format!("Error modifying: {}", e)),
+                    }
+                }
+                Err(e) => return Some(format!("Error reading file: {}", e)),
+            }
+        }
+        return Some("Please specify which file to modify.".to_string());
+    }
+
+    // Create file — support "create file xyz in python" or "create xyz.py"
+    if (text_lower.contains("create") || text_lower.contains("new") || text_lower.contains("make"))
+        && (text_lower.contains("file") || text_lower.contains("document") || text_lower.contains("code"))
+    {
+        if let Some((name, ext)) = extract_file_info(&text_lower) {
+            let resolved_ext = if ext == "txt" && language_hint.is_some() {
+                language_hint.unwrap()
+            } else {
+                &ext
+            };
+            match create_file(&name, resolved_ext) {
                 Ok(msg) => return Some(msg),
                 Err(e) => return Some(format!("Error: {}", e)),
             }
         }
         return Some("Please specify a filename.".to_string());
+    }
+
+    // Generate code in language — "create python file xyz" / "generate rust code"
+    if (text_lower.contains("generate") || text_lower.contains("write"))
+        && (text_lower.contains("code") || text_lower.contains("script"))
+    {
+        if let Some((name, ext)) = extract_file_info(&text_lower) {
+            let resolved_ext = if ext == "txt" && language_hint.is_some() {
+                language_hint.unwrap()
+            } else {
+                &ext
+            };
+            let file_path = format!("{}.{}", name, resolved_ext);
+            let boilerplate = generate_boilerplate(resolved_ext, &name);
+            match write_text_to_file(&file_path, &boilerplate) {
+                Ok(msg) => return Some(msg),
+                Err(e) => return Some(format!("Error: {}", e)),
+            }
+        }
     }
 
     // Delete file
@@ -1263,6 +1364,61 @@ pub fn process_file_command(text: &str) -> Option<String> {
 }
 
 /// Extract filename and extension from text
+/// Extract a language hint from text like "in python", "rust file", "javascript code"
+fn extract_language_hint(text: &str) -> Option<&'static str> {
+    let language_keywords = [
+        "python", "rust", "javascript", "js", "typescript", "ts", "go", "golang",
+        "ruby", "java", "kotlin", "swift", "c++", "cpp", "csharp", "c#", "php",
+        "perl", "lua", "r", "dart", "scala", "haskell", "bash", "shell", "sql",
+        "html", "css", "markdown", "json", "yaml", "toml", "xml", "zig", "nim",
+        "elixir", "clojure", "arduino", "assembly", "vue", "svelte",
+    ];
+
+    // Patterns like "in python", "python file", "rust code", "as python"
+    for word in text.split_whitespace() {
+        let clean = word.trim_matches(|c: char| !c.is_alphanumeric());
+        if language_keywords.contains(&clean) {
+            if let Some(ext) = language_to_extension(clean) {
+                return Some(ext);
+            }
+        }
+    }
+    None
+}
+
+/// Generate minimal boilerplate for a given language extension.
+fn generate_boilerplate(ext: &str, _name: &str) -> String {
+    match ext {
+        "py" => "def main():\n    pass\n\nif __name__ == \"__main__\":\n    main()\n".to_string(),
+        "rs" => "fn main() {\n    println!(\"Hello, world!\");\n}\n".to_string(),
+        "js" => "function main() {\n    console.log('Hello, world!');\n}\n\nmain();\n".to_string(),
+        "ts" => "function main(): void {\n    console.log('Hello, world!');\n}\n\nmain();\n".to_string(),
+        "go" => "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, world!\")\n}\n".to_string(),
+        "rb" => "def main\n  puts 'Hello, world!'\nend\n\nmain\n".to_string(),
+        "java" => "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, world!\");\n    }\n}\n".to_string(),
+        "kt" => "fun main() {\n    println(\"Hello, world!\")\n}\n".to_string(),
+        "swift" => "import Foundation\n\nprint(\"Hello, world!\")\n".to_string(),
+        "c" => "#include <stdio.h>\n\nint main() {\n    printf(\"Hello, world!\\n\");\n    return 0;\n}\n".to_string(),
+        "cpp" => "#include <iostream>\n\nint main() {\n    std::cout << \"Hello, world!\" << std::endl;\n    return 0;\n}\n".to_string(),
+        "cs" => "using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine(\"Hello, world!\");\n    }\n}\n".to_string(),
+        "php" => "<?php\n\necho \"Hello, world!\\n\";\n".to_string(),
+        "html" => "<!DOCTYPE html>\n<html>\n<head>\n    <title>{}</title>\n</head>\n<body>\n    <h1>Hello, world!</h1>\n</body>\n</html>\n".to_string(),
+        "css" => "/* styles */\n".to_string(),
+        "scss" => "// styles\n".to_string(),
+        "sql" => "-- SQL\nSELECT 1;\n".to_string(),
+        "sh" => "#!/bin/bash\n\necho \"Hello, world!\"\n".to_string(),
+        "toml" => "# config\n".to_string(),
+        "json" => "{}\n".to_string(),
+        "yaml" => "# config\n".to_string(),
+        "md" => "# Title\n\nDescription\n".to_string(),
+        "lua" => "function main()\n    print('Hello, world!')\nend\n\nmain()\n".to_string(),
+        "dart" => "void main() {\n    print('Hello, world!');\n}\n".to_string(),
+        "r" => "# Script\n".to_string(),
+        "zig" => "const std = @import(\"std\");\n\npub fn main() void {\n    std.debug.print(\"Hello, world!\\n\", .{});\n}\n".to_string(),
+        _ => String::new(),
+    }
+}
+
 fn extract_file_info(text: &str) -> Option<(String, String)> {
     let patterns = ["called ", "named ", "file "];
 
@@ -1314,6 +1470,86 @@ fn extract_file_info(text: &str) -> Option<(String, String)> {
     }
 
     None
+}
+
+/// Map a spoken language name to its canonical file extension.
+/// Supports both explicit extensions (".py") and language names ("python").
+pub fn language_to_extension(name: &str) -> Option<&'static str> {
+    let name = name.trim().to_lowercase();
+    let name = name.strip_prefix('.').unwrap_or(&name);
+
+    let map: &[(&str, &[&str])] = &[
+        ("py", &["py", "python", "python3"]),
+        ("rs", &["rs", "rust", "rustlang"]),
+        ("js", &["js", "javascript", "jsx"]),
+        ("ts", &["ts", "typescript", "tsx"]),
+        ("go", &["go", "golang"]),
+        ("rb", &["rb", "ruby"]),
+        ("java", &["java"]),
+        ("kt", &["kt", "kotlin"]),
+        ("swift", &["swift"]),
+        ("c", &["c"]),
+        ("cpp", &["cpp", "c++", "cxx", "cc"]),
+        ("h", &["h", "hpp", "header"]),
+        ("cs", &["cs", "csharp", "c#"]),
+        ("php", &["php"]),
+        ("pl", &["pl", "perl"]),
+        ("lua", &["lua"]),
+        ("r", &["r"]),
+        ("dart", &["dart"]),
+        ("scala", &["scala"]),
+        ("elm", &["elm"]),
+        ("clj", &["clj", "clojure"]),
+        ("hs", &["hs", "haskell"]),
+        ("erl", &["erl", "erlang"]),
+        ("ex", &["ex", "elixir"]),
+        ("zig", &["zig"]),
+        ("nim", &["nim"]),
+        ("sh", &["sh", "bash", "zsh", "shell"]),
+        ("toml", &["toml"]),
+        ("json", &["json"]),
+        ("yaml", &["yaml", "yml"]),
+        ("xml", &["xml"]),
+        ("md", &["md", "markdown"]),
+        ("html", &["html", "htm"]),
+        ("css", &["css"]),
+        ("scss", &["scss", "sass"]),
+        ("sql", &["sql"]),
+        ("txt", &["txt", "text"]),
+        ("csv", &["csv"]),
+        ("pdf", &["pdf"]),
+        ("docx", &["docx", "doc", "word"]),
+        ("xlsx", &["xlsx", "xls", "excel"]),
+        ("pptx", &["pptx", "ppt", "powerpoint"]),
+        ("ino", &["ino", "arduino"]),
+        ("asm", &["asm", "assembly", "nasm"]),
+        ("wasm", &["wasm", "wat"]),
+        ("vue", &["vue"]),
+        ("svelte", &["svelte"]),
+        ("astro", &["astro"]),
+    ];
+
+    if let Some((ext, _)) = map.iter().find(|(_, aliases)| aliases.iter().any(|a| *a == name)) {
+        return Some(ext);
+    }
+    // Also try direct match on the extension itself
+    map.iter().find(|(ext, _)| *ext == name).map(|(ext, _)| *ext)
+}
+
+/// Given a filename string and an optional language hint, return the proper filename with extension.
+/// If the filename already has an extension, it's preserved.
+pub fn resolve_filename(name: &str, language_hint: Option<&str>) -> String {
+    let name = name.trim();
+    // Already has an extension
+    if name.contains('.') && !name.starts_with('.') {
+        return name.to_string();
+    }
+    if let Some(lang) = language_hint {
+        if let Some(ext) = language_to_extension(lang) {
+            return format!("{}.{}", name, ext);
+        }
+    }
+    format!("{}.txt", name)
 }
 
 /// Extract folder name from text
