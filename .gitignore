@@ -20,3 +20,6 @@ Thumbs.db
 
 # Environment variables (API keys)
 .env
+
+# External repos / demo projects
+friday-tony-stark-demo/
